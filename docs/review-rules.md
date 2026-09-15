@@ -33,22 +33,43 @@ another severity. Reviewer judgment remains authoritative.
 
 ## Reviewer sets, merge rule and charters
 
-**Reviewer I** is the general implementation reviewer. Reviewer I checks
-correctness, defects, maintainability, error handling, changed behavior,
-contract consistency, and effective evidence. Reviewer I also checks exactly
-these three clauses:
+**Reviewer I**, with prefix `RI`, is the general implementation reviewer.
+Reviewer I checks maintainability, concretely harmful antipatterns,
+responsibility distribution, completeness against the approved current-track
+requirements, and ordinary local correctness. Ordinary local correctness covers
+local logic, boundaries, returned values, and local error handling when no
+specialist charter owns the check.
 
-- each in-scope failure mode and the exact signal that detects it. Missing
-  detection is a finding.
-- consumer-reachable semantics, defaults, command behavior, compatibility, and
-  persisted formats.
-- agreement between rule documents.
+An antipattern is concretely harmful only when evidence links it to an adverse
+effect on correctness, maintenance, operation, or a consumer. Responsibility
+distribution is defective when evidence shows unjustified coupling or a
+responsibility placed in a component that cannot own it coherently. A label or
+preference alone is not a finding.
 
-| track | required code-review set |
+Reviewer I does not absorb an absent specialist charter. Reviewer I does not
+judge or reject area proofs. Reviewer I does not justify an area's absence.
+Reviewer I does not search for missing focus areas. Reviewer I does not add
+gates. Reviewer I does not replace a specialist. The shared evidence standards in
+this document apply to Reviewer I and every specialist. Specialists retain
+consumer compatibility, failure reporting, rule agreement, and every other
+duty in their charters.
+
+| track | required routine implementation-review set |
 | --- | --- |
-| every track | Reviewer I plus one reviewer for every proved area whose canonical gate runs per track |
+| one or more proved areas | exactly one Reviewer I plus one specialist for every proved area whose canonical gate runs per track |
+| no proved area | none; report routine implementation review as `NOT REQUIRED` |
 
-Reviewer I runs on every track. Every proved area adds its reviewer.
+`NAMED` and `SKIPPED` areas do not select reviewers. Code, mixed, and
+documentation-only status do not select reviewers. Every required perspective
+is dispatched exactly once. Do not dispatch a duplicate action for the same
+required perspective.
+
+Reviewer I always runs in its own fresh thread. It never merges with any
+specialist, including on documentation-only work. Every specialist also runs in
+a fresh thread. Existing merge rules may combine specialist duties only with
+other specialist duties when both the code scope and required evidence are the
+same. Record the reason. Similar topics do not satisfy this rule. The
+test-quality and structure reviewer never merges with another built-in role.
 
 Reviewer I never counts against the production area-reviewer cap. The cap is
 four production area reviewers per review action. Split the action when more
@@ -57,20 +78,17 @@ unreported failure reviewers are production area reviewers and count against
 this cap. The test-quality and structure reviewer, prose reviewer, and licensing
 reviewer are additional and never count against that cap.
 
-Merge two general or production area perspectives only when both the code scope
-and required evidence are the same. Record the reason. Similar topics do not
-satisfy this rule. The test-quality and structure reviewer never merges with
-Reviewer I, a production area reviewer, the prose reviewer, or the licensing
-reviewer.
+A documentation-only track changes only documents. Every changed file must
+neither ship as code nor run. The size command does not classify this status.
+Documentation-only status does not trigger Reviewer I or any specialist. When
+unreadable user-facing prose is proved, Reviewer I and the prose specialist use
+two separate threads. A proved licensing area adds another separate specialist
+unless a specialist-only merge rule applies.
 
-Each changed file in a documentation-only track has the `documentation`
-classification from the shipped size command. A track with any `source` file is
-not documentation only. On a documentation-only track, Reviewer I may carry the
-prose charter and the licensing charter. Record the reason for this merge.
-
-A model may cover more than one merge-eligible charter only under the merge
-rule. Different reviewers remain separate actions and fresh contexts. Do not
-reduce reviewer count because earlier reviews found nothing.
+A model may cover more than one merge-eligible specialist charter only under
+the specialist-only merge rule. Different reviewers remain separate actions
+and fresh contexts. Do not reduce reviewer count because earlier reviews found
+nothing.
 
 A project may add charters through `reviewPerspectivesPath` in `slate.json`.
 Compose each applicable charter beside the built-in set. Each charter declares a

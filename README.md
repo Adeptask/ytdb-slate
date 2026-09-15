@@ -50,15 +50,17 @@ unreported failures.
 During planning, the orchestrator writes an independent risk record for the
 change and for every track. Each record has one line for every focus area. A
 NAMED line carries a four-part proof. User approval makes that area proved.
-User rejection makes it SKIPPED. Only proved areas add gates or area reviewers.
-Reviewer I remains the general implementation reviewer on every track.
+User rejection makes it SKIPPED. Only proved areas add gates or routine
+implementation reviewers. A track with at least one proved area gets one general
+Reviewer I plus every required area specialist. A track with no proved area gets
+no routine implementation reviewer.
 
 The workflow follows these steps:
 
 1. **Plan and confirm** — the orchestrator proposes all eleven focus lines. The user alone approves or rejects each NAMED proof.
 2. **Design** — a proved DESIGN-TRIGGERING area requires a high-level design. The user validates it before focus reconfirmation and one adversarial design review per proved DESIGN-TRIGGERING area. Final design approval follows.
 3. **Implement tracks** — each track is one coherent unit with its own focus set. The orchestrator compares the committed difference with that set before review.
-4. **Review and deliver** — Reviewer I and every proved-area reviewer inspect the track. Tracks with a proved DESIGN-TRIGGERING area require blocking user acceptance. Other tracks do not. Their markers follow required machine gates, the packet, and resolution of blocking user notes. Final change acceptance is always blocking.
+4. **Review and deliver** — when a track has a proved area, one Reviewer I and every required area specialist inspect it in separate review actions. A zero-area track reports routine implementation review as `NOT REQUIRED`. Tracks with a proved DESIGN-TRIGGERING area require blocking user acceptance. Other tracks do not. Their markers follow required machine gates, the packet, and resolution of blocking user notes. Final change acceptance is always blocking.
 
 Umbrella draft-PR publishing activates only when `workflow.draftPRs` is `true`.
 

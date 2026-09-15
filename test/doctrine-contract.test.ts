@@ -140,7 +140,8 @@ test("doctrine uses approved focus states, the four-part proof, and effective ga
   assert.ok(doctrine.includes("Focus areas are the only workflow trigger, in two classes: DESIGN-TRIGGERING and REVIEWER-ONLY."));
   assert.ok(doctrine.includes("Write independent eleven-line records for the change and each track."));
   assert.ok(doctrine.includes("NAMED submits defect, place, consequence, and review contribution. User approval proves it. Rejection makes it SKIPPED."));
-  assert.ok(doctrine.includes("Only proved areas add gates/reviewers, except Reviewer I."));
+  assert.ok(doctrine.includes("Only proved areas add gates/reviewers: one Reviewer I, separate from area reviewers."));
+  assert.doesNotMatch(doctrine, /Reviewer I remains required on every track|Review every track with Reviewer I/);
   assert.ok(doctrine.includes("User judges proofs and the simplest solution."));
   assert.ok(doctrine.includes(`Definitions: ${BLAST_RADIUS_DOC}. Lifecycle: ${TRACK_WORKFLOW_DOC}.`));
   assert.doesNotMatch(doctrine, /Concurrency defect|Data loss|Security weakness|Licensing exposure/);
@@ -163,9 +164,10 @@ test("design gates state validation, adversarial review, and final approval as o
 // and wiring, which stays here.
 test("doctrine states research-log, packet, and reviewer rules", { timeout: 5000 }, async () => {
   const doctrine = (await renderDoctrine()).replace(/\s+/g, " ");
-  assert.ok(doctrine.includes("Review every track with Reviewer I and one area reviewer for each proved focus area."));
-  assert.doesNotMatch(doctrine, /Verification or gate machinery receives the general implementation reviewer|engaged focus areas/);
-  assert.ok(doctrine.includes(`Before dispatching review threads, read ${REVIEW_RULES_DOC} and follow it. Skip the read when that file is already in your context.`));
+  assert.ok(doctrine.includes(`Before dispatching review threads, read ${REVIEW_RULES_DOC} and follow it.`));
+  assert.ok(doctrine.includes("For no-area model choice, follow Lifecycle."));
+  assert.ok(doctrine.includes("Skip the read when that file is already in your context."));
+  assert.doesNotMatch(doctrine, /Verification or gate machinery receives the general implementation reviewer|engaged focus areas|Review every track with Reviewer I/);
 });
 
 test("rule 8 renders the exact research-log and draft-publishing tails", { timeout: 5000 }, async () => {

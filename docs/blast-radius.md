@@ -13,9 +13,11 @@ four-part proof. The proof states the defect class, the place where the defect
 can occur, the material consequence, and the review contribution. User approval
 makes a NAMED area **proved**.
 User rejection makes it **SKIPPED**. Only a proved area adds focus-dependent
-gates or area reviewers. Reviewer I is the explicit current exception and runs
-on every track. The user alone judges proofs and whether the proposal is the
-simplest solution. No script or other rule decides whether a proof holds.
+gates or routine implementation reviewers. A track with one or more proved
+areas gets exactly one Reviewer I and every required area specialist. A track
+with no proved area gets no routine implementation reviewer. The user alone
+judges proofs and whether the proposal is the simplest solution. No script or
+other rule decides whether a proof holds.
 
 Each track must be one coherent unit that a human can review in one sitting. The
 orchestrator owns the split and records its rationale. Reject a split that would
@@ -334,7 +336,7 @@ change that does not engage the area.
 No rule mechanically decides whether a proof holds. The user alone judges every
 proof at the confirmation gate and at focus reconfirmation. A SKIPPED area gets
 no gate or reviewer. The skip is recorded and is not an escalation. A track with
-no proved area still gets Reviewer I.
+no proved area gets no routine implementation reviewer.
 
 Reviewer composition and merging belong to
 [review-rules.md](review-rules.md) § Reviewer sets, merge rule and charters.
@@ -384,24 +386,31 @@ On a halt, the orchestrator:
 
 The route never applies a design gate retrospectively to completed work. It
 keeps the recorded skip and every reviewer that already covered completed work.
-A late proved area adds its reviewer to the completed range. The track packet
-and final acceptance report the resulting coverage.
+A late proved area recomputes the complete required routine reviewer set for the
+completed range. The first proved area adds Reviewer I and the new area
+specialist. A later proved area keeps the existing Reviewer I without
+redispatching that perspective and adds only the new area specialist. Every
+newly required perspective reviews the completed range. The track packet and
+final acceptance report the resulting coverage.
 
 ## Review coverage and the coverage register
 
-Every part of a track range must reach Reviewer I and the perspectives that the
-proved areas of that track require. Required user acceptance never replaces
-machine review.
-This requirement is the coverage invariant.
+Every part of a track range must reach the complete routine implementation
+reviewer set that the proved areas require. The set is empty when the track has
+no proved area. Otherwise it contains exactly one Reviewer I and every required
+area specialist. Required user acceptance never replaces required machine
+review. This requirement is the coverage invariant.
 
 Create a coverage register when a user-review fix commit exists. Record each
 contiguous user-review fix range and its gate verdict. The register remains the
 review-accounting authority for those ranges. The track table remains a
 display-only split index and carries no commit identifier.
 
-At delivery, a live register produces the one-line coverage conclusion required
-by [track-workflow.md](track-workflow.md). The detailed register stays in the
-research log.
+At delivery, a live register produces the separate user-requested-fix
+verification verdict required by [track-workflow.md](track-workflow.md). The
+routine implementation-review conclusion reports `NOT REQUIRED` when the
+required reviewer set is empty. The detailed register stays in the research
+log.
 
 ## Commit discipline for drift and boundaries
 

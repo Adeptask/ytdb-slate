@@ -506,17 +506,17 @@ threads execute. Rules:
    and REVIEWER-ONLY. Write independent eleven-line records for the change and
    each track. NAMED submits defect, place, consequence, and review contribution.
    User approval proves it. Rejection makes it SKIPPED. Only proved areas add
-   gates/reviewers, except Reviewer I. User judges proofs and the simplest
-   solution. Definitions: ${BLAST_RADIUS_DOC}. Lifecycle: ${TRACK_WORKFLOW_DOC}. Read only as needed. Before edits,
+   gates/reviewers: one Reviewer I, separate from area reviewers. User judges
+   proofs and the simplest solution. Definitions: ${BLAST_RADIUS_DOC}. Lifecycle: ${TRACK_WORKFLOW_DOC}. Read only as needed. Before edits,
    get user approval for each NAMED proof and finish required gates. Each proved
    DESIGN-TRIGGERING area requires design, user validation, focus reconfirmation
    before its adversarial design review, final design approval, and blocking
    track acceptance. REVIEWER-ONLY or no-area tracks need no track acceptance.
    Final acceptance always blocks.
    ${rule8Tail}
-9. Review every track with Reviewer I and one area reviewer for each proved focus
-   area. Before dispatching review threads, read ${REVIEW_RULES_DOC} and follow
-   it. Skip the read when that file is already in your context.${rule9Tail}${followUpTail}
+9. Before dispatching review threads, read ${REVIEW_RULES_DOC} and follow it.
+   For no-area model choice, follow Lifecycle. Skip the read when that file is
+   already in your context.${rule9Tail}${followUpTail}
 10. The design principles behind this architecture are documented in
    ${DESIGN_PRINCIPLES_DOC}.
    Read that file only when you must reason about slate itself.

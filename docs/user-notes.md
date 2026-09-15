@@ -198,8 +198,11 @@ The final report provides full accounting for:
 The delivery record carries a one-line index of every ignored finding. Each
 entry carries the identifier, location and one-line summary.
 
-The report includes one line that concludes whether Reviewer I and every
-proved-area perspective covered the full required range.
+The report gives routine implementation review and user-requested-fix
+verification as separate verdicts. The routine line concludes whether the full
+required reviewer set covered the range. It states `NOT REQUIRED` when the
+track has no proved area and does not claim Reviewer I coverage. When a
+user-requested-fix range exists, another line gives its dedicated gate verdict.
 
 The coverage register stays in the research log. Neither its entries nor its
 size enter a packet or the final report. The detailed register never leaves the

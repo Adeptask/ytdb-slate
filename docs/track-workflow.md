@@ -93,15 +93,16 @@ performance degradation, and non-local logic defect. REVIEWER-ONLY areas are
 test-quality defect, unreadable user-facing prose, licensing exposure, consumer
 contract break, governing-rule defect, and unreported failure.
 
-Only a proved area adds a focus-dependent gate or area reviewer. Every proved
-area adds its code reviewer. Reviewer I is the explicit current exception and
-remains required on every track. A proved DESIGN-TRIGGERING area also requires a
-high-level design, user validation, focus reconfirmation, its own adversarial
-design reviewer, and final design approval. User acceptance of a track is
-blocking when that track proves at least one DESIGN-TRIGGERING area. A track
-with only REVIEWER-ONLY areas, or no proved area, has no mandatory
-track-acceptance gate. A track with no proved area also has no area reviewer.
-Final change acceptance is always blocking.
+Only a proved area adds a focus-dependent gate or routine implementation
+reviewer. Every proved area adds its specialist. A track with at least one
+proved area also gets exactly one Reviewer I in a separate thread. A track with
+no proved area gets no routine implementation reviewer. A proved
+DESIGN-TRIGGERING area also requires a high-level design, user validation,
+focus reconfirmation, its own adversarial design reviewer, and final design
+approval. User acceptance of a track is blocking when that track proves at
+least one DESIGN-TRIGGERING area. A track with only REVIEWER-ONLY areas, or no
+proved area, has no mandatory track-acceptance gate. A track with no proved area
+also has no area reviewer. Final change acceptance is always blocking.
 
 <!-- focus-area-table:begin -->
 | # | focus area | the gate it adds | where the gate runs |
@@ -118,6 +119,17 @@ Final change acceptance is always blocking.
 | 10 | governing-rule defect | one area reviewer for governing-rule defects | every track that proves the area |
 | 11 | unreported failure | one area reviewer for unreported failures | every track that proves the area |
 <!-- focus-area-table:end -->
+
+For implementation of a track with no proved area and model routing on, choose
+a suitable candidate from `router.models` with a sourced tier of 2 or higher.
+If none exists, choose the highest sourced tier and record the fallback in the
+track packet. A rendered `t?` is not a rank. It cannot qualify for tier 2 or
+enter a rank comparison. If no candidate has a sourced tier, stop before
+implementation and ask the user to choose explicitly from `router.models`.
+Record the choice and the unknown-tier limitation. Candidate membership,
+effort, avoid, and dispatch restrictions still apply. Routing off has no tier
+vocabulary, so this policy has an accepted enforcement gap and adds no runtime
+guard.
 
 [blast-radius.md](blast-radius.md) defines each area and owns the canonical
 copy of this table.
@@ -223,15 +235,20 @@ addition, proposed or approved removal, SKIPPED state, user decision, and
 reviewer-coverage decision.
 
 When the orchestrator or implementer discovers a late area, the orchestrator
-presents its four-part proof to the user at once. Approval adds its code
-reviewer. Approval of a DESIGN-TRIGGERING area also enters or re-enters the
-design sequence for remaining affected work unless the user records a decision to skip
-that gate. Present any necessary new, revised, or materially clarified design
-before continuing that work. Reuse unchanged approved design and completed
-applicable gates, but run the newly required area-specific design review.
-Completed work receives no retrospective design gate. When no work remains,
-record the skip, review the completed range with the added reviewer, and present
-the record at final acceptance.
+presents its four-part proof to the user at once. Approval recomputes the
+complete required routine reviewer set. If the track had no proved area, the
+newly required perspectives are Reviewer I and the new area specialist.
+Otherwise, the existing Reviewer I remains required but is not dispatched
+again. The only newly required perspective is the new area specialist. Approval
+of a DESIGN-TRIGGERING area also enters or re-enters the design sequence for
+remaining affected work unless the user records a decision to skip that gate.
+Present any necessary new, revised, or materially clarified design before
+continuing that work. Reuse unchanged approved design and completed applicable
+gates, but run the newly required area-specific design review. Completed work
+receives no retrospective design gate. Every newly required routine reviewer
+perspective reviews the completed range, even when another perspective already
+covered it. When no work remains, record the design-gate skip, complete that
+review, and present the record at final acceptance.
 
 The implementer reports any risk that the plan did not name. The orchestrator
 writes its proof and starts the same immediate user-decision route. An
@@ -334,9 +351,12 @@ history as boundary authority. The track table is display-only.
 
 ## Review coverage
 
-Every part of a track range must reach Reviewer I and the perspectives that the
-proved areas of that track require. User review never replaces machine review.
-This requirement is the coverage invariant.
+Every part of a track range must reach the complete routine implementation
+reviewer set that the proved areas require. The set is empty when the track has
+no proved area. Otherwise it contains exactly one Reviewer I and every required
+area specialist. User review never replaces required machine review. This
+requirement is the coverage invariant. A track with an empty set reports
+routine implementation review as `NOT REQUIRED`.
 
 The coverage register records each contiguous range of user-review fix commits
 together with the gate verdict for that range. It is the review-accounting
@@ -354,10 +374,12 @@ proved area, has no mandatory track-acceptance gate. In a single-track change,
 any blocking track acceptance and final change acceptance are one event. Final
 change acceptance is always blocking.
 
-Done means all required reviews and gates passed. No blockers remain. Every
-addressed finding at major severity or above is verified. Every major finding
-is fixed or has a recorded user waiver. Every finding below major severity has
-a recorded disposition of fixed, ignored, moot, or rejected.
+Done means all required reviews and gates passed. For routine implementation
+review, the required set is the set in § Review coverage. An empty set reports
+`NOT REQUIRED` and requires no invented Reviewer I coverage. No blockers remain.
+Every addressed finding at major severity or above is verified. Every major
+finding is fixed or has a recorded user waiver. Every finding below major
+severity has a recorded disposition of fixed, ignored, moot, or rejected.
 
 The note queue is drained before final acceptance. Every escalation has a
 disposition. The coverage
@@ -388,7 +410,10 @@ contiguous range to the coverage register. Dispatch one fresh gate thread to
 verify that range before adding the marker, or before completing final
 acceptance for a single-track change.
 
-For a user-review fix range, one dedicated gate thread supplies machine review for that range. A **REJECTED**,
+For a user-review fix range, one dedicated gate thread supplies machine review
+for that range, including when the track has no proved area. This evidence-
+triggered verification is separate from routine implementation review. Report
+its verdict separately from a routine `NOT REQUIRED` result. A **REJECTED**,
 **STILL OPEN**, or **REGRESSION** verdict routes each correction through the
 existing agentic-review fix title and body form. Repeat this gate on the
 corrected range. This correction loop uses the ordinary two-round cap and
