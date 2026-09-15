@@ -116,6 +116,39 @@ async function renderDoctrine(router?: ModelRouterResolution, config: SlateConfi
   return result.systemPrompt.slice("BASE".length);
 }
 
+test("routing doctrine distinguishes unknown tiers from unsourced cost classes", { timeout: 5000 }, async () => {
+  const sourced = routedResolution().candidates[0];
+  assert.ok(sourced);
+  const unknown: RouterCandidate = {
+    ...sourced,
+    spec: "experimental/unknown",
+    id: "unknown",
+    profile: { ...sourced.profile, id: "experimental/unknown", tier: null },
+    tier: null,
+    nonPreferred: "NEVER AUTO-SELECT — test",
+  };
+  const costClass: RouterCandidate = {
+    ...sourced,
+    spec: "experimental/cost-class",
+    id: "cost-class",
+    profile: { ...sourced.profile, id: "experimental/cost-class", tier: 2, tierUnsourced: true },
+    tier: 2,
+    tierUnsourced: true,
+    nonPreferred: "NEVER AUTO-SELECT — test",
+  };
+  const doctrine = await renderDoctrine({
+    on: true,
+    candidates: [unknown, costClass],
+    cheapest: unknown.spec,
+    cheapestNonPreferred: true,
+    warnings: [],
+  });
+  assert.match(doctrine, /experimental\/unknown\|[^\n]*\|t\?!\|/);
+  assert.match(doctrine, /experimental\/cost-class\|[^\n]*\|c2!\|/);
+  assert.match(doctrine, /t\? = no tier evidence/);
+  assert.match(doctrine, /cN = cost class, not a rank/);
+});
+
 test("routing doctrine renders dated prices and truthful candidate ordering", { timeout: 5000 }, async () => {
   const doctrine = await renderDoctrine(routedResolution());
   const priceDate = /Prices include dated updates after (\d{4}-\d{2}-\d{2}) research\./.exec(doctrine)?.[1];

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ModelProfile, PriceRow } from "../extension/model-profiles.ts";
+import { findProfile, ladderFor, MODEL_PROFILES, type ModelProfile, type PriceRow, type ThinkingLevel } from "../extension/model-profiles.ts";
 import {
+  checkEffort,
   coveringPriceRow,
   isValidPrice,
   resolveModelRouter,
@@ -111,6 +112,100 @@ function plan(
 function divergenceWarnings(verdict: RoutePlanVerdict): readonly string[] {
   return verdict.warnings.filter((warning) => warning.includes("model-visible warning"));
 }
+
+const ALL_THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+const EXPERIMENTAL_LADDERS: Readonly<Record<string, readonly ThinkingLevel[]>> = {
+  "claude-bridge/claude-sonnet-5": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+  "claude-bridge/claude-opus-5": ["minimal", "low", "medium", "high", "xhigh", "max"],
+  "openai-codex/gpt-5.3-codex-spark": ["off", "minimal", "low", "medium", "high", "xhigh"],
+  "openai-codex/gpt-5.5": ["off", "minimal", "low", "medium", "high", "xhigh"],
+  "openai-codex/gpt-5.6-luna": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+  "openai-codex/gpt-5.6-sol": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+  "openai-codex/gpt-5.6-terra": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
+  "openai-codex/gpt-6-astra": ["minimal", "low", "medium", "high", "xhigh", "max"],
+};
+
+test("experimental provider profiles remain distinct and pass real router and effort guards", () => {
+  const experimental = Object.keys(EXPERIMENTAL_LADDERS);
+  const native = [
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-5.6-sol",
+    "anthropic/claude-sonnet-5",
+    "anthropic/claude-opus-5",
+  ];
+  const models = Object.fromEntries([...native, ...experimental].map((spec) => [spec, { contextWindow: 272000 }]));
+  const warnings: string[] = [];
+  const resolved = resolveModelRouter({
+    models: [...experimental].reverse().concat(native),
+    registry: {
+      find: (provider, id) => models[`${provider}/${id}`],
+      hasConfiguredAuth: () => true,
+    },
+  }, (warning) => warnings.push(warning));
+
+  assert.equal(resolved.on, true);
+  assert.equal(resolved.candidates.length, native.length + experimental.length);
+  assert.equal(resolved.cheapest, "openai/gpt-5.6-luna", "experimental profiles must not change the preferred default");
+  for (const spec of experimental) {
+    const p = findProfile(spec);
+    assert.ok(p, spec);
+    assert.equal(p.id, spec);
+    assert.equal(p.tier, null);
+    assert.equal(p.tierUnsourced, true);
+    assert.equal(p.nonPreferred?.startsWith("NEVER AUTO-SELECT"), true);
+    assert.deepEqual(p.price, []);
+    assert.deepEqual(p.capabilityMeasuredAt, []);
+    assert.deepEqual(ladderFor(p), EXPERIMENTAL_LADDERS[spec]);
+    assert.deepEqual(p.evidenceGapAt, EXPERIMENTAL_LADDERS[spec]);
+    assert.equal(resolved.candidates.some((candidate) => candidate.spec === spec), true);
+    for (const level of EXPERIMENTAL_LADDERS[spec] ?? []) {
+      assert.equal(checkEffort(resolved, spec, level).verdict, "evidence-gap", `${spec} @${level}`);
+    }
+  }
+  assert.notEqual(findProfile("openai/gpt-5.6-sol"), findProfile("openai-codex/gpt-5.6-sol"));
+  assert.notEqual(findProfile("anthropic/claude-sonnet-5"), findProfile("claude-bridge/claude-sonnet-5"));
+  assert.notEqual(findProfile(experimental[0] ?? "")?.evidenceGapAt, findProfile(experimental[1] ?? "")?.evidenceGapAt);
+  assert.equal(warnings.some((warning) => warning.includes("name the same profiled model")), false);
+
+  for (const [spec, ladder] of Object.entries(EXPERIMENTAL_LADDERS)) {
+    const supported = ladder[0];
+    assert.ok(supported, spec);
+    const allowed = planRoute({ resolution: resolved, requestedModel: spec, requestedEffort: supported });
+    assert.equal(allowed.kind, "proceed", `${spec} supports ${supported}`);
+    assert.equal(allowed.effortUnmeasured, true, `${spec} marks ${supported} unmeasured`);
+    const refused = planRoute({ resolution: resolved, requestedModel: spec, requestedEffort: supported, allowUnmeasuredEffort: false });
+    assert.equal(refused.kind, "reject", `${spec} refuses unmeasured ${supported} in strict mode`);
+    for (const unsupported of ALL_THINKING_LEVELS.filter((level) => !ladder.includes(level))) {
+      const offLadder = planRoute({ resolution: resolved, requestedModel: spec, requestedEffort: unsupported });
+      assert.equal(offLadder.kind, "reject", `${spec} refuses unsupported ${unsupported}`);
+    }
+  }
+
+  const nativeTerraIndex = resolved.candidates.findIndex((candidate) => candidate.spec === "openai/gpt-5.6-terra");
+  const firstExperimentalIndex = resolved.candidates.findIndex((candidate) => candidate.spec === experimental[0]);
+  assert.ok(nativeTerraIndex >= 0 && firstExperimentalIndex >= 0 && nativeTerraIndex < firstExperimentalIndex,
+    "an unsourced numeric cost class must sort before a wholly unknown tier in the same nonpreferred class");
+
+  const absent = "openai-codex/gpt-5.5";
+  const unauthorized = "openai-codex/gpt-6-astra";
+  const unauthorizedModel = models[unauthorized];
+  delete models[absent];
+  const droppedWarnings: string[] = [];
+  const dropped = resolveModelRouter({
+    models: experimental,
+    registry: {
+      find: (provider, id) => models[`${provider}/${id}`],
+      hasConfiguredAuth: (model) => model !== unauthorizedModel,
+    },
+  }, (warning) => droppedWarnings.push(warning));
+  assert.equal(dropped.candidates.some((candidate) => candidate.spec === absent), false);
+  assert.equal(dropped.candidates.some((candidate) => candidate.spec === unauthorized), false);
+  assert.equal(droppedWarnings.some((warning) => warning.includes("not in pi's model registry")), true);
+  assert.equal(droppedWarnings.some((warning) => warning.includes("no usable credentials configured")), true);
+  assert.equal(MODEL_PROFILES.filter((p) => experimental.includes(p.id)).length, 8);
+});
 
 test("registry costs survive absent, malformed, non-finite, and throwing fields", () => {
   const throwingCost = {

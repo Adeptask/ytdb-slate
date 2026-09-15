@@ -1394,12 +1394,13 @@ try {
 		const asTrusted = (extSet, getRouter, config = {}) => doctrine(extSet, getRouter, true, config);
 		const WITH_EXT = { units: [{ path: "/x", source: "npm:demo", isDirectory: true, tools: [{ name: "d", description: "d" }] }], paths: [], toolNames: [] };
 		/** A RouterCandidate as model-router freezes them — only the fields mode.ts reads. */
+		const suppliedOr = (options, key, fallback) => Object.hasOwn(options, key) ? options[key] : fallback;
 		const cand = (spec, o = {}) => ({
 			spec,
-			inUsdPerMTok: o.in ?? 1,
-			outUsdPerMTok: o.out ?? 2,
-			contextWindow: o.window ?? 200_000,
-			tier: o.tier ?? 1,
+			inUsdPerMTok: suppliedOr(o, "in", 1),
+			outUsdPerMTok: suppliedOr(o, "out", 2),
+			contextWindow: suppliedOr(o, "window", 200_000),
+			tier: suppliedOr(o, "tier", 1),
 			tierUnsourced: o.tierUnsourced,
 			nonPreferred: o.nonPreferred ?? null,
 			ladder: o.ladder ?? ["low", "medium", "high"],
@@ -1471,7 +1472,7 @@ try {
 		 * the header, the legend and the prose, and fails loudly if the column order ever
 		 * changes rather than quietly matching nothing.
 		 */
-		const rowsOf = (rule) => rule.split("\n").filter((l) => /^ {3}[^|]*\|[^|]*\|[^|]*\|t(?:\d+|\?)!?\|/.test(l));
+		const rowsOf = (rule) => rule.split("\n").filter((l) => /^ {3}[^|]*\|[^|]*\|[^|]*\|(?:t(?:\d+|\?)|c\d+)!?\|/.test(l));
 
 		await section("doctrine-router-off", async () => {
 			// I2 — FEATURE-OFF IS BYTE-IDENTICAL. `off-doctrine` above already compares an
@@ -1827,7 +1828,7 @@ try {
 			const taggedReasons = reasons.filter((p) => TAG.test(p.nonPreferred) || /\[[A-Z]{1,3}\d+[a-z]?\]/.test(p.nonPreferred));
 			// ...and the marker that REPLACES the reason must be there, or the information is
 			// simply lost rather than relocated.
-			const markedRows = rowsOf(rule).filter((r) => /\|t(\d|\?)!\|/.test(r));
+			const markedRows = rowsOf(rule).filter((r) => /\|(?:t(?:\d|\?)|c\d)!\|/.test(r));
 			checkAll(
 				"doctrine-no-trace",
 				"two hard content exclusions, asserted against the REAL shipped profile table because a fabricated fixture cannot leak what it does not carry: no research trace tag (`[O2]`, `[G1a]`, …) appears anywhere in the doctrine — they point into a `research/` directory this package does not publish — and no `nonPreferred` REASON string is rendered, because those are written in the same trace-contaminated register. A non-preferred model is marked `!` in its tier cell instead, so the fact survives while its prose does not. Non-vacuous by construction: the table must really contain tags, and a reason must really carry one, or these terms prove nothing",
@@ -2331,32 +2332,33 @@ try {
 			// the identity and the bounds go back to being install-dependent.
 			const pathOccurrences = (text) => DOCS_DIR === "" ? 0 : text.split(DOCS_DIR).length - 1;
 			const docPaths = pathOccurrences(on);
-			// 2026-09-10: 7,202 × 1.05 = 7,562.1; ceil 7,563, so the bound is 7,600.
-			const WRITING_ROUTER_BOUND = 7600;
-			// 2026-09-10: 7,457 × 1.05 = 7,829.85; ceil 7,830, so the bound is 7,900.
-			const ALL_TAILS_BOUND = 7900;
-			// 2026-09-10: the 8,642 deferred-issue maximum is largest. 8,642 × 1.05 = 9,074.1; ceil 9,075, so the bound is 9,100.
-			const MAXIMAL_BOUND = 9100;
+			// 2026-09-15: 8,712 × 1.05 = 9,147.6; ceil 9,148, so the bound is 9,200.
+			const WRITING_ROUTER_BOUND = 9200;
+			// 2026-09-15: 8,967 × 1.05 = 9,415.35; ceil 9,416, so the bound is 9,500.
+			const ALL_TAILS_BOUND = 9500;
+			// 2026-09-15: the 10,152 deferred-issue maximum is largest. 10,152 × 1.05 = 10,659.6; ceil 10,660, so the bound is 10,700.
+			const MAXIMAL_BOUND = 10700;
 			checkAll(
 				"doctrine-budget",
-				"portable doctrine budgets cover the routing rule, each representative feature basis, and one maximum-shaped all-feature fixture. The maximum fixture uses all nine shipped profiles, draft PRs, writing, two capped worker units, and four capped tools. A measured positive control adds one capped tool and six copies of the largest model row, so budget growth cannot pass vacuously",
+				"portable doctrine budgets cover the routing rule, each representative feature basis, and one maximum-shaped all-feature fixture. The maximum fixture uses all seventeen shipped profiles, draft PRs, writing, two capped worker units, and four capped tools. A measured positive control adds one capped tool and six copies of the largest model row, so budget growth cannot pass vacuously",
 				[
 					["the normalisation bites: the doctrine really does embed the authoritative docs directory", docPaths === 5 && DOCS_DIR === dirname(paths.WRITING_GUIDANCE_DOC), { docPaths, DOCS_DIR }],
 					["every fixture has the exact embedded-path occurrence count", pathOccurrences(untrusted) === 3 && pathOccurrences(off) === 4 && pathOccurrences(on) === 5 && pathOccurrences(writingOn) === 4 && pathOccurrences(writingRouterOn) === 5 && pathOccurrences(writingExtensionsOn) === 4 && pathOccurrences(writingAllOn) === 5 && pathOccurrences(maximal) === 6 && pathOccurrences(maximalNoDraft) === 5 && pathOccurrences(maximalFollowUp) === 6 && pathOccurrences(dogfood) === 6 && pathOccurrences(overBudget) === 6, { untrusted: pathOccurrences(untrusted), off: pathOccurrences(off), on: pathOccurrences(on), writing: pathOccurrences(writingOn), writingRouter: pathOccurrences(writingRouterOn), writingExtensions: pathOccurrences(writingExtensionsOn), all: pathOccurrences(writingAllOn), maximal: pathOccurrences(maximal), maximalNoDraft: pathOccurrences(maximalNoDraft), followUp: pathOccurrences(maximalFollowUp), dogfood: pathOccurrences(dogfood), positive: pathOccurrences(overBudget) }],
 					["...and removing it changes the measurement, so the bounds are not raw counts", portable(on).length < on.length, { raw: on.length, portable: portable(on).length }],
 					["space-bearing docs directories normalize without parsing rendered text", spacedPortable === "read /track-workflow.md", spacedPortable],
-					["the whole rule stays under 4000 portable chars with five percent reserve", ruleChars <= 4000 && hasDoctrineReserve(ruleChars, 4000), { portableChars: ruleChars, rawChars: rule.length, rows: rows.length }],
-					["...and under 34 lines with five percent reserve", rule.split("\n").length <= 34 && hasDoctrineReserve(rule.split("\n").length, 34), rule.split("\n").length],
+					["the whole rule stays under 4300 portable chars with five percent reserve", ruleChars <= 4300 && hasDoctrineReserve(ruleChars, 4300), { portableChars: ruleChars, rawChars: rule.length, rows: rows.length }],
+					["...and under 35 lines with five percent reserve", rule.split("\n").length <= 35 && hasDoctrineReserve(rule.split("\n").length, 35), rule.split("\n").length],
 					["its FIXED prose — the part that does not scale with the table — stays under 1500 portable chars with five percent reserve", prose <= 1500 && hasDoctrineReserve(prose, 1500), prose],
 					["no single model row exceeds 300 chars or consumes its five percent reserve", longest <= 300 && hasDoctrineReserve(longest, 300), { longest, worst: rows.reduce((a, b) => (a.length > b.length ? a : b), "").slice(0, 80) }],
 					["every candidate rendered a row, so the row bound is not measuring an empty set", rows.length === realCandidates.length, { rows: rows.length, candidates: realCandidates.length }],
+					["experimental candidates preserve the real null tier, absent prices, and unsourced metadata", realCandidates.filter((candidate) => candidate.profile.asOf === "2026-09-15").length === 8 && realCandidates.filter((candidate) => candidate.profile.asOf === "2026-09-15").every((candidate) => candidate.tier === null && candidate.inUsdPerMTok === undefined && candidate.outUsdPerMTok === undefined && candidate.tierUnsourced === true), realCandidates.filter((candidate) => candidate.profile.asOf === "2026-09-15").map((candidate) => [candidate.spec, candidate.tier, candidate.inUsdPerMTok, candidate.outUsdPerMTok, candidate.tierUnsourced])],
 					["the configured-model fixture is the exact fixed six-model list", configuredCandidates.length === 6 && configuredCandidates.every((candidate) => configuredSpecs.includes(candidate.spec)) && configuredSpecs.every((spec) => configuredCandidates.some((candidate) => candidate.spec === spec)), { configuredSpecs, candidates: configuredCandidates.map((candidate) => candidate.spec) }],
 					["the fabricated dogfood fixture resolves its exact five-model list through the real router and uses pi registry context windows", dogfoodCandidates.length === dogfoodSpecs.length && dogfoodCandidates.every((candidate) => dogfoodSpecs.includes(candidate.spec)) && dogfoodCandidates.every((candidate) => candidate.contextWindow === (candidate.provider === "anthropic" ? 1_000_000 : 272_000)), { configured: dogfoodSpecs, candidates: dogfoodCandidates.map((candidate) => [candidate.spec, candidate.contextWindow]) }],
 					["the dogfood fixture is the measured 7424 portable chars and 102 lines", dogfoodPortable === 7424 && dogfood.split("\n").length === 102, { portable: dogfoodPortable, lines: dogfood.split("\n").length }],
 					["the rule is the ONLY thing added to the doctrine when the router is on", on.length - off.length === rule.length, { on: on.length, off: off.length, rule: rule.length }],
 					["the untrusted doctrine is the measured 2708 portable chars, 43 lines, and three embedded paths", portable(untrusted).length === 2708 && untrusted.split("\n").length === 43 && pathOccurrences(untrusted) === 3, { portable: portable(untrusted).length, lines: untrusted.split("\n").length, paths: pathOccurrences(untrusted) }],
 					["the router-off trusted doctrine is the measured 4617 portable chars and 72 lines", portable(off).length === 4617 && off.split("\n").length === 72, { portable: portable(off).length, lines: off.split("\n").length }],
-					[`...and the whole router-on doctrine is the measured 7202 portable chars and 96 lines, and stays under ${WRITING_ROUTER_BOUND} with five percent reserve`, portable(on).length === 7202 && on.split("\n").length === 96 && portable(on).length <= WRITING_ROUTER_BOUND && hasDoctrineReserve(portable(on).length, WRITING_ROUTER_BOUND), { portable: portable(on).length, raw: on.length, lines: on.split("\n").length }],
+					[`...and the whole router-on doctrine is the measured 8712 portable chars and 104 lines, and stays under ${WRITING_ROUTER_BOUND} with five percent reserve`, portable(on).length === 8712 && on.split("\n").length === 104 && portable(on).length <= WRITING_ROUTER_BOUND && hasDoctrineReserve(portable(on).length, WRITING_ROUTER_BOUND), { portable: portable(on).length, raw: on.length, lines: on.split("\n").length }],
 					["writing and design doctrine is the measured 4617 portable chars and 72 lines, and stays under 5600 with five percent reserve", portable(writingOn).length === 4617 && writingOn.split("\n").length === 72 && portable(writingOn).length <= 5600 && hasDoctrineReserve(portable(writingOn).length, 5600), { portable: portable(writingOn).length, lines: writingOn.split("\n").length }],
 					["draft-enabled router-off doctrine is 4636 portable chars and 72 lines", portable(offDraft).length === 4636 && offDraft.split("\n").length === 72, { portable: portable(offDraft).length, lines: offDraft.split("\n").length }],
 					["draft-enabled router-off writing doctrine is 4636 portable chars and 72 lines", portable(offDraftWriting).length === 4636 && offDraftWriting.split("\n").length === 72, { portable: portable(offDraftWriting).length, lines: offDraftWriting.split("\n").length }],
@@ -2364,17 +2366,17 @@ try {
 					["the six-model fixture is 6647 portable chars and 93 lines with writing", portable(configuredOffDraftWriting).length === 6647 && configuredOffDraftWriting.split("\n").length === 93, { portable: portable(configuredOffDraftWriting).length, lines: configuredOffDraftWriting.split("\n").length }],
 					["the six-model draft fixture is 6666 portable chars and 93 lines", portable(configuredDraft).length === 6666 && configuredDraft.split("\n").length === 93, { portable: portable(configuredDraft).length, lines: configuredDraft.split("\n").length }],
 					["the six-model draft and writing fixture is 6666 portable chars and 93 lines", portable(configuredDraftWriting).length === 6666 && configuredDraftWriting.split("\n").length === 93, { portable: portable(configuredDraftWriting).length, lines: configuredDraftWriting.split("\n").length }],
-					[`writing plus router is the measured 7202 portable chars and 96 lines, and stays under ${WRITING_ROUTER_BOUND} with five percent reserve`, portable(writingRouterOn).length === 7202 && writingRouterOn.split("\n").length === 96 && portable(writingRouterOn).length <= WRITING_ROUTER_BOUND && hasDoctrineReserve(portable(writingRouterOn).length, WRITING_ROUTER_BOUND), { portable: portable(writingRouterOn).length, lines: writingRouterOn.split("\n").length }],
+					[`writing plus router is the measured 8712 portable chars and 104 lines, and stays under ${WRITING_ROUTER_BOUND} with five percent reserve`, portable(writingRouterOn).length === 8712 && writingRouterOn.split("\n").length === 104 && portable(writingRouterOn).length <= WRITING_ROUTER_BOUND && hasDoctrineReserve(portable(writingRouterOn).length, WRITING_ROUTER_BOUND), { portable: portable(writingRouterOn).length, lines: writingRouterOn.split("\n").length }],
 					["writing plus extensions is the measured 4872 portable chars and 78 lines, and stays under 6000 with five percent reserve", portable(writingExtensionsOn).length === 4872 && writingExtensionsOn.split("\n").length === 78 && portable(writingExtensionsOn).length <= 6000 && hasDoctrineReserve(portable(writingExtensionsOn).length, 6000), { portable: portable(writingExtensionsOn).length, lines: writingExtensionsOn.split("\n").length }],
-					[`all three tail features are the measured 7457 portable chars and 102 lines, and stay under ${ALL_TAILS_BOUND} with five percent reserve`, portable(writingAllOn).length === 7457 && writingAllOn.split("\n").length === 102 && portable(writingAllOn).length <= ALL_TAILS_BOUND && hasDoctrineReserve(portable(writingAllOn).length, ALL_TAILS_BOUND), { portable: portable(writingAllOn).length, lines: writingAllOn.split("\n").length }],
-					["the all-nine draft fixture is 7221 portable chars and 96 lines", portable(allDraft).length === 7221 && allDraft.split("\n").length === 96, { portable: portable(allDraft).length, lines: allDraft.split("\n").length }],
-					["the all-nine draft and writing fixture is 7221 portable chars and 96 lines", portable(allDraftWriting).length === 7221 && allDraftWriting.split("\n").length === 96, { portable: portable(allDraftWriting).length, lines: allDraftWriting.split("\n").length }],
+					[`all three tail features are the measured 8967 portable chars and 110 lines, and stay under ${ALL_TAILS_BOUND} with five percent reserve`, portable(writingAllOn).length === 8967 && writingAllOn.split("\n").length === 110 && portable(writingAllOn).length <= ALL_TAILS_BOUND && hasDoctrineReserve(portable(writingAllOn).length, ALL_TAILS_BOUND), { portable: portable(writingAllOn).length, lines: writingAllOn.split("\n").length }],
+					["the all-seventeen draft fixture is 8731 portable chars and 104 lines", portable(allDraft).length === 8731 && allDraft.split("\n").length === 104, { portable: portable(allDraft).length, lines: allDraft.split("\n").length }],
+					["the all-seventeen draft and writing fixture is 8731 portable chars and 104 lines", portable(allDraftWriting).length === 8731 && allDraftWriting.split("\n").length === 104, { portable: portable(allDraftWriting).length, lines: allDraftWriting.split("\n").length }],
 					// Update exact measurements with production wording in the same commit.
-					[`the maximum all-feature fixture is the measured 8568 portable chars and 106 lines, and stays within ${MAXIMAL_BOUND} with five percent reserve`, maximalPortable === 8568 && maximal.split("\n").length === 106 && maximalPortable <= MAXIMAL_BOUND && hasDoctrineReserve(maximalPortable, MAXIMAL_BOUND), { portable: maximalPortable, raw: maximal.length, lines: maximal.split("\n").length, profiles: realCandidates.length, units: MAX_EXT.units.length, tools: MAX_EXT.units.reduce((n, unit) => n + unit.tools.length, 0) }],
-					[`the draft-PR-disabled maximum fixture is pinned independently at 8549 portable chars and 106 lines, and shares the ${MAXIMAL_BOUND} maximum bound`, maximalNoDraftPortable === 8549 && maximalNoDraft.split("\n").length === 106 && maximalNoDraftPortable <= MAXIMAL_BOUND && hasDoctrineReserve(maximalNoDraftPortable, MAXIMAL_BOUND), { portable: maximalNoDraftPortable, raw: maximalNoDraft.length, lines: maximalNoDraft.split("\n").length, profiles: realCandidates.length, units: MAX_EXT.units.length, tools: MAX_EXT.units.reduce((n, unit) => n + unit.tools.length, 0) }],
+					[`the maximum all-feature fixture is the measured 10078 portable chars and 114 lines, and stays within ${MAXIMAL_BOUND} with five percent reserve`, maximalPortable === 10078 && maximal.split("\n").length === 114 && maximalPortable <= MAXIMAL_BOUND && hasDoctrineReserve(maximalPortable, MAXIMAL_BOUND), { portable: maximalPortable, raw: maximal.length, lines: maximal.split("\n").length, profiles: realCandidates.length, units: MAX_EXT.units.length, tools: MAX_EXT.units.reduce((n, unit) => n + unit.tools.length, 0) }],
+					[`the draft-PR-disabled maximum fixture is pinned independently at 10059 portable chars and 114 lines, and shares the ${MAXIMAL_BOUND} maximum bound`, maximalNoDraftPortable === 10059 && maximalNoDraft.split("\n").length === 114 && maximalNoDraftPortable <= MAXIMAL_BOUND && hasDoctrineReserve(maximalNoDraftPortable, MAXIMAL_BOUND), { portable: maximalNoDraftPortable, raw: maximalNoDraft.length, lines: maximalNoDraft.split("\n").length, profiles: realCandidates.length, units: MAX_EXT.units.length, tools: MAX_EXT.units.reduce((n, unit) => n + unit.tools.length, 0) }],
 					["the capped worker rule is the measured 1347 chars and 11 split lines, and stays within 1600 with five percent reserve", workerRule.length === 1347 && workerRule.split("\n").length === 11 && workerRule.length <= 1600 && hasDoctrineReserve(workerRule.length, 1600), { chars: workerRule.length, lines: workerRule.split("\n").length }],
-					["the maximum model-row and tool-line increments are positive and measured", maxModelIncrement.growth === 184 && maxToolIncrement === 212, { maxModelIncrement, maxToolIncrement, modelIncrements }],
-					[`the positive control is the measured 9884 portable chars and 113 lines, and exceeds ${MAXIMAL_BOUND} by the larger growth unit`, overBudgetPortable === 9884 && overBudget.split("\n").length === 113 && overBudgetPortable > MAXIMAL_BOUND && overBudgetPortable - MAXIMAL_BOUND >= Math.max(maxModelIncrement.growth, maxToolIncrement), { portable: overBudgetPortable, lines: overBudget.split("\n").length, bound: MAXIMAL_BOUND, growthBeyondBound: overBudgetPortable - MAXIMAL_BOUND, maxModelIncrement, maxToolIncrement }],
+					["the maximum model-row and tool-line increments are positive and measured", maxModelIncrement.growth === 192 && maxToolIncrement === 212, { maxModelIncrement, maxToolIncrement, modelIncrements }],
+					[`the positive control is the measured 11442 portable chars and 121 lines, and exceeds ${MAXIMAL_BOUND} by the larger growth unit`, overBudgetPortable === 11442 && overBudget.split("\n").length === 121 && overBudgetPortable > MAXIMAL_BOUND && overBudgetPortable - MAXIMAL_BOUND >= Math.max(maxModelIncrement.growth, maxToolIncrement), { portable: overBudgetPortable, lines: overBudget.split("\n").length, bound: MAXIMAL_BOUND, growthBeyondBound: overBudgetPortable - MAXIMAL_BOUND, maxModelIncrement, maxToolIncrement }],
 					// Exact measurements are maintenance tripwires, not timeless facts. Update them
 					// with the wording change in the same commit. Remeasure through this doctrine-budget
 					// check, which renders the production before_agent_start hook and normalizes paths.
@@ -2390,7 +2392,7 @@ try {
 				"doctrine-budget-deferred",
 				"the trusted deferred-issue configuration has its own pinned maximum fixture and preserves the existing maximum bound",
 				[
-					[`the maximal deferred-issue fixture is the measured 8642 portable chars and 107 lines, and stays within ${MAXIMAL_BOUND} with five percent reserve`, maximalFollowUpPortable === 8642 && maximalFollowUp.split("\n").length === 107 && maximalFollowUpPortable <= MAXIMAL_BOUND && hasDoctrineReserve(maximalFollowUpPortable, MAXIMAL_BOUND), { portable: maximalFollowUpPortable, raw: maximalFollowUp.length, lines: maximalFollowUp.split("\n").length, reserveRequired: Math.ceil(maximalFollowUpPortable * 1.05), bound: MAXIMAL_BOUND }],
+					[`the maximal deferred-issue fixture is the measured 10152 portable chars and 115 lines, and stays within ${MAXIMAL_BOUND} with five percent reserve`, maximalFollowUpPortable === 10152 && maximalFollowUp.split("\n").length === 115 && maximalFollowUpPortable <= MAXIMAL_BOUND && hasDoctrineReserve(maximalFollowUpPortable, MAXIMAL_BOUND), { portable: maximalFollowUpPortable, raw: maximalFollowUp.length, lines: maximalFollowUp.split("\n").length, reserveRequired: Math.ceil(maximalFollowUpPortable * 1.05), bound: MAXIMAL_BOUND }],
 				],
 			);
 		});
@@ -2416,7 +2418,7 @@ try {
 		// billing guard reads both, and no other check needs them set.
 		longContextThreshold: o.longContextThreshold ?? null,
 		longContextMultipliers: o.longContextMultipliers ?? null,
-		tier: o.tier ?? 1,
+		tier: o.tier === undefined ? 1 : o.tier,
 		nonPreferred: o.nonPreferred ?? null,
 		routeFor: "anything",
 		avoidFor: "nothing",
@@ -2608,6 +2610,14 @@ try {
 				models: ["p/bbb", "p/noprice", "p/aaa"],
 				profiles: profiles(tied),
 			});
+			// A null tier is the supported unknown state. Multiple null tiers fall
+			// through their infinite tier keys to price and then spec deterministically.
+			const nullTiers = [at("p/null-dear", null, 7), at("p/null-cheap-b", null, 2), at("p/null-cheap-a", null, 2), at("p/sourced", 4, 99)];
+			const nullRes = resolve({
+				registry: registry(Object.fromEntries(nullTiers.map((p) => [p.id, { contextWindow: 1, auth: true }]))),
+				models: ["p/null-dear", "p/null-cheap-b", "p/sourced", "p/null-cheap-a"],
+				profiles: profiles(nullTiers),
+			});
 			// A malformed tier must sort LAST rather than poison the comparator with
 			// NaN (CQ5); it is listed FIRST here, so an uncoerced tier would leave it
 			// in place and the assertion below would catch that.
@@ -2617,8 +2627,9 @@ try {
 				models: ["p/junktier", "p/sound"],
 				profiles: profiles([junkTier, at("p/sound", 4, 99)]),
 			});
-			checkAll("router-order-ties", "a tier+price tie is broken by spec, a candidate with no usable price row sorts last and is warned about, a non-numeric tier sorts last instead of poisoning the comparator, and all of them stay routable", [
+			checkAll("router-order-ties", "a tier+price tie is broken by spec, a candidate with no usable price row sorts last and is warned about, null and malformed tiers sort after numeric tiers, and equal infinite tier keys fall through to price and spec while all candidates stay routable", [
 				["spec tie-break, unpriced last", specs(tiedRes.res) === "p/aaa,p/bbb,p/noprice", specs(tiedRes.res)],
+				["null tiers sort after numeric tiers, then by price and spec", specs(nullRes.res) === "p/sourced,p/null-cheap-a,p/null-cheap-b,p/null-dear", specs(nullRes.res)],
 				["unpriced price is undefined", tiedRes.res.candidates[2]?.inUsdPerMTok === undefined, tiedRes.res.candidates[2]?.inUsdPerMTok],
 				["warned about the missing price", has(tiedRes.warned, /no usable input price/), tiedRes.warned],
 				["still a candidate", tiedRes.res.candidates.length === 3, tiedRes.res.candidates.length],
@@ -7199,9 +7210,12 @@ its reviewer.`);
 			const tierPrices = new Map();
 			for (const p of all) {
 				const rows = p.price;
-				if (!Array.isArray(rows) || rows.length === 0) {
-					bad.push(`${p.id}: no price rows`);
+				if (!Array.isArray(rows)) {
+					bad.push(`${p.id}: price is not an array`);
 					continue;
+				}
+				if (rows.length === 0 && !(p.tier === null && p.unknownRoutingCriticalFields?.some((field) => /price/i.test(field)))) {
+					bad.push(`${p.id}: no price rows without an explicit unknown-price marker and null tier`);
 				}
 				let prevUntil = null;
 				for (const [i, r] of rows.entries()) {
@@ -7218,7 +7232,7 @@ its reviewer.`);
 				}
 				const row = table.PROFILES_AS_OF ? rows.find((r) => (r.from === null || r.from <= table.PROFILES_AS_OF) && (r.until === null || r.until >= table.PROFILES_AS_OF)) : rows[0];
 				if (row) tierPrices.set(p.tier, [...(tierPrices.get(p.tier) ?? []), row.inUsdPerMTok]);
-				if (!(typeof p.tier === "number" && Number.isInteger(p.tier) && p.tier >= 1 && p.tier <= 4)) bad.push(`${p.id}: tier out of range (${p.tier})`);
+				if (!(p.tier === null || (typeof p.tier === "number" && Number.isInteger(p.tier) && p.tier >= 1 && p.tier <= 4))) bad.push(`${p.id}: tier is neither null nor an integer from 1 to 4 (${p.tier})`);
 				if (!(p.nonPreferred === null || (typeof p.nonPreferred === "string" && p.nonPreferred !== ""))) bad.push(`${p.id}: nonPreferred is neither null nor a non-empty reason`);
 			}
 			// Tier ordinality: tiers are a cost/capability class, so no tier may be
@@ -7231,7 +7245,7 @@ its reviewer.`);
 				const upper = Math.min(...tierPrices.get(tiers[i]));
 				if (!(lower <= upper)) inversions.push(`tier ${tiers[i - 1]} max ${lower} > tier ${tiers[i]} min ${upper}`);
 			}
-			checkAll("profiles-price", "every price schedule is a non-empty, ascending, non-overlapping sequence of ISO-dated rows with positive prices and output ≥ input; tier is an integer 1–4, nonPreferred is null or a reason, and tiers do not price-invert", [
+			checkAll("profiles-price", "every known price schedule is an ascending, non-overlapping sequence of ISO-dated rows with positive prices and output ≥ input; an empty schedule requires null tier and an unknown-price marker; numeric tiers remain integers 1–4; nonPreferred is null or a reason; numeric tiers do not price-invert", [
 				["no violation", bad.length === 0, bad],
 				["tiers do not invert", inversions.length === 0, inversions],
 				["more than one tier present", tiers.length > 1, tiers],
@@ -7300,10 +7314,18 @@ its reviewer.`);
 		});
 
 		await section("profiles-meta", async () => {
-			const frozen = all.every((p) => Object.isFrozen(p) && Object.isFrozen(p.price) && p.price.every((r) => Object.isFrozen(r)) && Object.isFrozen(p.capabilityMeasuredAt));
-			checkAll("profiles-meta", "PROFILES_AS_OF is an ISO date, every profile carries it, and the whole table is deep-frozen so no consumer can mutate shared data", [
-				["PROFILES_AS_OF is ISO", isIso(table.PROFILES_AS_OF), table.PROFILES_AS_OF],
-				["every asOf matches", all.every((p) => p.asOf === table.PROFILES_AS_OF), all.filter((p) => p.asOf !== table.PROFILES_AS_OF).map((p) => `${p.id}: ${p.asOf}`)],
+			const experimentalIds = new Set([
+				"claude-bridge/claude-sonnet-5", "claude-bridge/claude-opus-5",
+				"openai-codex/gpt-5.3-codex-spark", "openai-codex/gpt-5.5",
+				"openai-codex/gpt-5.6-luna", "openai-codex/gpt-5.6-sol",
+				"openai-codex/gpt-5.6-terra", "openai-codex/gpt-6-astra",
+			]);
+			const expectedDate = (id) => experimentalIds.has(id) ? "2026-09-15" : "2026-07-29";
+			const dateMismatches = all.filter((p) => !isIso(p.asOf) || p.asOf !== expectedDate(p.id)).map((p) => `${p.id}: ${p.asOf}, expected ${expectedDate(p.id)}`);
+			const frozen = all.every((p) => Object.isFrozen(p) && Object.isFrozen(p.price) && p.price.every((r) => Object.isFrozen(r)) && Object.isFrozen(p.capabilityMeasuredAt) && Object.isFrozen(p.evidenceGapAt) && Object.isFrozen(p.hazards) && Object.isFrozen(p.unknownRoutingCriticalFields));
+			checkAll("profiles-meta", "the nine base profiles retain the base-corpus date, the eight experimental profiles retain their documented observation date, and the whole table is deep-frozen so no consumer can mutate shared data", [
+				["PROFILES_AS_OF is the exact base-corpus date", table.PROFILES_AS_OF === "2026-07-29", table.PROFILES_AS_OF],
+				["every profile has its exact expected observation date", all.length === 17 && experimentalIds.size === 8 && dateMismatches.length === 0, dateMismatches],
 				["table frozen", Object.isFrozen(all), Object.isFrozen(all)],
 				["profiles and rows frozen", frozen, all.map((p) => `${p.id}: ${Object.isFrozen(p)}/${Object.isFrozen(p.price)}`)],
 				["evidence is a non-empty string", all.every((p) => typeof p.evidence === "string" && p.evidence !== ""), all.filter((p) => typeof p.evidence !== "string" || p.evidence === "").map((p) => p.id)],

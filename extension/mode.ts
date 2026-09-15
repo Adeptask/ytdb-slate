@@ -254,16 +254,15 @@ function tokens(value: unknown): string {
 }
 
 /**
- * The tier cell: the tier, plus the two markers a reader must not be denied.
- * An UNSOURCED tier renders as "t?" rather than its number — the profile table
- * records such a tier as a cost class, never a ranking, so printing the ordinal
- * would present it as evidence it is not. "!" marks a non-preferred model; its
- * REASON is deliberately not rendered (see buildRoutingRule).
+ * The tier cell distinguishes a sourced tier, an unsourced numeric cost class,
+ * and no tier evidence. "!" marks a non-preferred model. Its reason is not
+ * rendered here.
  */
 function tierCell(candidate: RouterCandidate): string {
 	const tier = candidate.tier;
-	const sourced = candidate.tierUnsourced !== true && typeof tier === "number" && Number.isFinite(tier);
-	return `${sourced ? `t${tier}` : "t?"}${candidate.nonPreferred ? "!" : ""}`;
+	const known = typeof tier === "number" && Number.isFinite(tier);
+	const value = !known ? "t?" : candidate.tierUnsourced ? `c${tier}` : `t${tier}`;
+	return `${value}${candidate.nonPreferred ? "!" : ""}`;
 }
 
 /**
@@ -374,7 +373,8 @@ function buildRoutingRule(router: ModelRouterResolution, allowUnmeasuredEffort: 
 	// clause is pure cost in a block loaded on every turn.
 	const legend = [
 		candidates.some((c) => c.nonPreferred) ? "! = never a default pick" : "",
-		candidates.some((c) => c.tierUnsourced === true) ? "t? = cost class, not a rank" : "",
+		candidates.some((c) => c.tier === null) ? "t? = no tier evidence" : "",
+		candidates.some((c) => c.tierUnsourced === true && typeof c.tier === "number") ? "cN = cost class, not a rank" : "",
 		candidates.some((c) => c.ladderAssumed === true) ? "~ = assumed ladder" : "",
 		// The one case the "omit `effort`" sentence below cannot answer from the
 		// table: with no measured level there is nothing to derive, so pi's own

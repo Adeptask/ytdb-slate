@@ -12,7 +12,7 @@ it. An entry with no profile is named in a warning and excluded —
 the router will not invent a tier, a price or an effort ladder for a
 model it has no traced evidence about. Project-supplied profiles are
 not implemented, so adding a model means a new shipped profile
-rather than a config entry. The nine specs Slate profiles today are
+rather than a config entry. The seventeen specs Slate profiles today are
 listed under [Where the numbers come
 from](#where-the-numbers-come-from-and-how-stale-they-can-be).
 
@@ -179,9 +179,10 @@ Candidates are ordered by five keys, in this order:
    after every preferred candidate, absolutely, whatever the tier or
    price says. The marker means "never a default pick";
 2. **tier sourcing** — within a preference class, candidates whose
-   tier is a sourced ordinal come before those whose tier is only a
+   tier is a sourced ordinal come before those whose numeric tier is only a
    cost class read off the price;
-3. **tier**, ascending (1 = cheapest class);
+3. **tier**, ascending (1 = cheapest class). A null tier has no evidence and
+   sorts after every numeric tier.
 4. **current effective input price**, ascending;
 5. **spec**, only so the order is total and reproducible.
 
@@ -323,13 +324,13 @@ overflow behavior. Slate also does not emit a prompt-size billing notice.
   doctrine gains a routing rule — a table with one row per routable
   model, plus the rules for reading it. This is the surface you do
   not see, and it is the router's standing cost: 2,030 characters /
-  21 added doctrine lines for six configured models, 2,585 / 24 for
-  all nine. In the current snapshot a model row costs 146–183
+  21 added doctrine lines for six configured models, and 4,095 / 32 for
+  all 17 shipped profiles. In the current snapshot a model row costs 146–183
   characters, plus a one-off legend clause for each marker it
-  introduces. With the unconditional writing rule subtracted, the router grows
-  Slate's block from 3,084 portable characters and 48 lines to 5,114 portable
-  characters and 69 lines for the fixed fabricated six-model fixture. That
-  roster currently matches this repository's list but does not read project
+  introduces. The complete trusted doctrine grows from 4,617 portable
+  characters and 72 lines with routing off to 6,647 characters and 93 lines
+  for the fixed fabricated six-model fixture, or 8,712 characters and 104
+  lines for all 17 profiles. The fabricated rosters do not read project
   config. Those are PORTABLE characters — the
   doctrine with each occurrence of the installed `docs/` directory
   removed, filenames kept — because the doctrine embeds absolute doc
@@ -459,7 +460,7 @@ The routing data is a static, deep-frozen table in
 no network access and no runtime refresh; the table changes only
 when the package is republished.
 
-It profiles nine models, and because the list is closed these are
+It profiles seventeen models, and because the list is closed these are
 the only specs `router.models` can be built from. Copy the spelling
 exactly — a spec that differs is dropped as unprofiled:
 
@@ -474,6 +475,14 @@ exactly — a spec that differs is dropped as unprofiled:
 | `openai/gpt-5.4-nano` | none | cheap tier, out of scope (below) |
 | `openai/gpt-5.4-mini` | none | cheap tier, out of scope |
 | `anthropic/claude-haiku-4-5` | none | cheap tier, out of scope |
+| `claude-bridge/claude-sonnet-5` | none | experimental alternate provider, non-preferred |
+| `claude-bridge/claude-opus-5` | none | experimental alternate provider, non-preferred |
+| `openai-codex/gpt-5.3-codex-spark` | none | experimental ChatGPT backend, non-preferred |
+| `openai-codex/gpt-5.5` | none | experimental ChatGPT backend, non-preferred |
+| `openai-codex/gpt-5.6-luna` | none | experimental ChatGPT backend, non-preferred |
+| `openai-codex/gpt-5.6-sol` | none | experimental ChatGPT backend, non-preferred |
+| `openai-codex/gpt-5.6-terra` | none | experimental ChatGPT backend, non-preferred |
+| `openai-codex/gpt-6-astra` | none | experimental ChatGPT backend, non-preferred |
 
 "Measured levels" are the levels an omitted `effort` can resolve to
 and the levels an explicit one passes the evidence-gap guard at; the
@@ -491,15 +500,32 @@ happens to be a real registry id and does route. Registry contents
 change, so treat that as a dated observation and prefer the canonical
 column above.
 
-The last three are profiled but OUT OF SCOPE for routing — they are
-there so that naming one gets you data instead of a spurious "no
-profile" warning, and all three are marked non-preferred, carry
-assumed rather than traced effort ladders, and have no
-effort-labelled capability results at all. Routing to them is a
-deliberate scope decision, not a default.
+The three cheap-tier profiles are OUT OF SCOPE for routing. They are
+present so that naming one gets data instead of a spurious "no profile"
+warning. All three are non-preferred. Their effort ladders are assumed,
+and they have no effort-labelled capability results. Routing to them is
+a deliberate scope decision, not a default.
+
+The eight alternate-provider profiles are experimental. Pi 0.85.1 public
+catalog metadata was observed on 2026-09-15. Its pure
+`getSupportedThinkingLevels` helper yields three ladder groups. Bridge Sonnet
+and Codex Luna, Sol, and Terra have all seven levels. Bridge Opus and Codex
+Astra exclude `off`. Codex Spark and GPT-5.5 exclude `max`. The installed
+pi-claude-bridge 0.7.0 forwards the two Anthropic catalog maps unchanged.
+This evidence proves metadata support only. It does not prove live execution,
+entitlement, quota, price, context behavior, privacy, retention, or capability.
+
+OpenAI Codex uses the `openai-codex-responses` provider against the ChatGPT
+backend. Treat it as a separate data boundary from the native OpenAI provider.
+Use synthetic, non-sensitive input for experiments until privacy and retention
+behavior is established. Slate checks registry membership and configured
+authentication. It does not classify input sensitivity or enforce this limit.
+The same doctrine-only limit applies to review and gate actions, as described
+under [What the router does NOT enforce](#what-the-router-does-not-enforce).
 
 `PROFILES_AS_OF` is **2026-07-29** — the date of the research behind
-the table — and every profile carries the same date in its own
+the original research corpus. Each original profile carries that date.
+The experimental profiles carry their 2026-09-15 catalog observation date in
 `asOf`, which is what the divergence warning quotes. The only
 time-varying part of the data is price-row selection: a schedule
 with a dated step change switches rows by itself on that date.
@@ -508,10 +534,10 @@ The table's own provenance rules, which the warnings above depend
 on:
 
 - a value is transcribed from the research corpus unless the file
-  marks it otherwise at its own site (pi's registry decides the id
-  spelling; an unsourced tier is a cost class, not a ranking; an
-  assumed ladder is a provider-family shape, not a traced fact;
-  aliases are resolution spellings, not data);
+  marks it otherwise at its own site. Pi's registry decides the id spelling.
+  Null tier means no tier evidence. An unsourced numeric tier is a cost class,
+  not a ranking. An assumed ladder is a provider-family shape, not a traced
+  fact. Aliases are resolution spellings, not data.
 - a figure that cannot be traced is NOT carried: the field is `null`
   and its name appears in the profile's unknown-routing-critical
   list, which is exactly what the "routing decisions for it are
@@ -532,8 +558,9 @@ harness in the source repository — it is not part of the published
 package) assert **structure only** for this table — ids and aliases
 resolve, ladders are
 duplicate-free subsets of pi's vocabulary, the measured and gap
-lists are disjoint and cover the ladder, price rows are well formed
-and tiers do not price-invert, the table is frozen. It asserts no
+lists are disjoint and cover the ladder, known price rows are well formed,
+empty price schedules carry an unknown-price marker and null tier, numeric
+tiers do not price-invert, and the table is frozen. It asserts no
 research number, and cannot: scaling every price by the same factor
 passes green, a tier moved so that it does not invert prices passes
 green, and an invented hazard clause or evidence sentence passes

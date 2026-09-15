@@ -20,7 +20,13 @@
  * otherwise AT ITS OWN SITE, and every such mark is either a machine-readable
  * field or a `derived` / `[registry]` tag on the value's own line. Cache
  * retention is separately sourced to provider guides and dated local probes at
- * its own fields. The other marks in use today are `id` (pi's registry decides
+ * its own fields. Experimental alternate-provider rows are marked at their own
+ * sites and use the public model catalog bundled with Pi 0.85.1, observed on
+ * 2026-09-15. Their catalog ladders are computed with that version's
+ * `getSupportedThinkingLevels` helper. The catalog proves model metadata only.
+ * It does not prove service execution, entitlement, price, context behavior,
+ * privacy, retention, or capability. The other marks in use today are `id`
+ * (pi's registry decides
  * that spelling — see ID CHOICE),
  * `tierUnsourced` (the tier is a cost class this module read off the prices,
  * not a sourced ordinal), `ladderAssumed` (the ladder is a provider-family
@@ -163,8 +169,8 @@
  *    any of the six and its leaderboard is stale, newest run 2025-10-03 [G1c].
  */
 
-/** Strictly ordinal capability/cost class, 1 = cheapest. Not a quality score. */
-export type ModelTier = 1 | 2 | 3 | 4;
+/** Strictly ordinal capability/cost class, 1 = cheapest. Null means no tier evidence. */
+export type ModelTier = 1 | 2 | 3 | 4 | null;
 
 /** pi's effort ladder (digest §V). No vendor spellings, and `med` never appears. */
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -248,8 +254,9 @@ export interface ModelProfile {
 	longContextThreshold: number | null;
 	/** BILLING multipliers above the threshold; `cachedIn`/`cacheWrite` apply to the matching PriceRow cache fields (schema addition, DF1) */
 	longContextMultipliers: { in: number; out: number; cachedIn?: number; cacheWrite?: number } | null;
+	/** A sourced ordinal, an unsourced numeric cost class, or null when no tier evidence exists. */
 	tier: ModelTier;
-	/** true when `tier` is NOT a sourced ordinal: the digest assigns none (cheap tier) or places the model outside the ordering (terra's `t?`). A tier sort must not read it as a ranking. */
+	/** true when `tier` has no sourced ordinal. A numeric value is only a cost class, while null remains unknown. */
 	tierUnsourced?: true;
 	/** true when `ladderFor()` returns an ASSUMED provider-family ladder rather than a traced one [§E.7] */
 	ladderAssumed?: true;
@@ -290,6 +297,61 @@ function deepFreeze<T>(value: T): T {
 	}
 	return value;
 }
+
+// Native corpus ladders and 2026-09-15 alternate-provider catalog ladders.
+const OPENAI_GPT_5_LADDER: readonly ThinkingLevel[] = Object.freeze(["off", "low", "medium", "high", "xhigh", "max"] as const);
+const FULL_LADDER: readonly ThinkingLevel[] = Object.freeze(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const);
+const NO_OFF_LADDER: readonly ThinkingLevel[] = Object.freeze(["minimal", "low", "medium", "high", "xhigh", "max"] as const);
+const NO_MAX_LADDER: readonly ThinkingLevel[] = Object.freeze(["off", "minimal", "low", "medium", "high", "xhigh"] as const);
+
+const EXPERIMENTAL_AS_OF = "2026-09-15";
+const EXPERIMENTAL_UNKNOWN_FIELDS = [
+	"standard price and billing terms for this provider surface",
+	"cache retention and cache invalidation behavior",
+	"context window and maximum output verified for this provider surface",
+	"privacy, retention, and training-use terms",
+	"capability at every supported effort level",
+] as const;
+
+function experimentalProfile(id: string, ladder: readonly ThinkingLevel[]): ModelProfile {
+	return {
+		id,
+		aliases: [],
+		price: [],
+		cacheRetention: null,
+		contextWindow: null,
+		maxOutput: null,
+		longContextThreshold: null,
+		longContextMultipliers: null,
+		tier: null,
+		tierUnsourced: true,
+		nonPreferred: "NEVER AUTO-SELECT — experimental provider profile has no capability measurement or verified service execution [catalog].",
+		routeFor: "explicit experiments with synthetic non-sensitive input only",
+		avoidFor: "review, gate, sensitive, or production work because capability is unmeasured",
+		hazards: [
+			"EXPERIMENTAL: catalog recognition is not live service verification",
+			"DATA BOUNDARY: privacy and retention behavior is unverified. Use synthetic non-sensitive input only",
+		],
+		capabilityMeasuredAt: [],
+		evidenceGapAt: [...ladder],
+		unknownRoutingCriticalFields: [...EXPERIMENTAL_UNKNOWN_FIELDS],
+		evidence: `Pi 0.85.1 catalog map observed ${EXPERIMENTAL_AS_OF}. Its pure helper yields ${ladder.join(", ")}. Service execution is unverified.`,
+		asOf: EXPERIMENTAL_AS_OF,
+	};
+}
+
+const EXPERIMENTAL_PROFILES = [
+	// pi-claude-bridge 0.7.0 forwards these public Anthropic catalog maps unchanged.
+	experimentalProfile("claude-bridge/claude-sonnet-5", FULL_LADDER),
+	experimentalProfile("claude-bridge/claude-opus-5", NO_OFF_LADDER),
+	// Pi 0.85.1 registers these through the openai-codex-responses provider.
+	experimentalProfile("openai-codex/gpt-5.3-codex-spark", NO_MAX_LADDER),
+	experimentalProfile("openai-codex/gpt-5.5", NO_MAX_LADDER),
+	experimentalProfile("openai-codex/gpt-5.6-luna", FULL_LADDER),
+	experimentalProfile("openai-codex/gpt-5.6-sol", FULL_LADDER),
+	experimentalProfile("openai-codex/gpt-5.6-terra", FULL_LADDER),
+	experimentalProfile("openai-codex/gpt-6-astra", NO_OFF_LADDER),
+];
 
 const OPENAI_GPT_5_6_CACHE_RETENTION = {
 	documented: {
@@ -876,6 +938,7 @@ const PROFILES: ModelProfile[] = [
 			"Vals SWE-bench Verified 66.600% ±2.111 (#60/75) at $0.3662/test; AA-LCR 70.33%; wins Terminal-Bench 2.1 vs nano, 43.820% vs 41.573% [G3, arb].",
 		asOf: "2026-07-29",
 	},
+	...EXPERIMENTAL_PROFILES,
 ];
 
 /**
@@ -912,16 +975,6 @@ export function findProfile(spec: string): ModelProfile | undefined {
 	return bySpec.get(key);
 }
 
-// The three ladder shapes of digest §V. pi's `off`/`minimal` are dispatch
-// levels the providers accept beyond the five Anthropic documents; no source
-// measures either for any model.
-// NO minimal [contract, O2]
-const OPENAI_GPT_5_LADDER: readonly ThinkingLevel[] = Object.freeze(["off", "low", "medium", "high", "xhigh", "max"] as const);
-// all seven [contract, A2]
-const ANTHROPIC_FULL_LADDER: readonly ThinkingLevel[] = Object.freeze(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const);
-// NO off — thinking always on [contract, A2]
-const ANTHROPIC_THINKING_ALWAYS_ON_LADDER: readonly ThinkingLevel[] = Object.freeze(["minimal", "low", "medium", "high", "xhigh", "max"] as const);
-
 /**
  * Per-id ladders rather than a prefix rule: fable-5 breaks its family's shape
  * (no `off`), and the cheap tier's ladders are UNVERIFIED assumptions [§E.7],
@@ -937,15 +990,23 @@ const LADDER_BY_ID: ReadonlyMap<string, readonly ThinkingLevel[]> = new Map<stri
 	["openai/gpt-5.6-sol", OPENAI_GPT_5_LADDER],
 	["openai/gpt-5.6-terra", OPENAI_GPT_5_LADDER],
 	["openai/gpt-5.6-luna", OPENAI_GPT_5_LADDER],
-	["anthropic/claude-sonnet-5", ANTHROPIC_FULL_LADDER],
-	["anthropic/claude-opus-5", ANTHROPIC_FULL_LADDER],
-	["anthropic/claude-fable-5", ANTHROPIC_THINKING_ALWAYS_ON_LADDER],
+	["anthropic/claude-sonnet-5", FULL_LADDER],
+	["anthropic/claude-opus-5", FULL_LADDER],
+	["anthropic/claude-fable-5", NO_OFF_LADDER],
 	// The three below are ASSUMED family shapes, unverified [§E.7]; their
 	// profiles carry `ladderAssumed: true` so a consumer can tell them apart
 	// from a traced ladder without re-deriving it here.
 	["openai/gpt-5.4-nano", OPENAI_GPT_5_LADDER],
 	["openai/gpt-5.4-mini", OPENAI_GPT_5_LADDER],
-	["anthropic/claude-haiku-4-5", ANTHROPIC_FULL_LADDER],
+	["anthropic/claude-haiku-4-5", FULL_LADDER],
+	["claude-bridge/claude-sonnet-5", FULL_LADDER],
+	["claude-bridge/claude-opus-5", NO_OFF_LADDER],
+	["openai-codex/gpt-5.3-codex-spark", NO_MAX_LADDER],
+	["openai-codex/gpt-5.5", NO_MAX_LADDER],
+	["openai-codex/gpt-5.6-luna", FULL_LADDER],
+	["openai-codex/gpt-5.6-sol", FULL_LADDER],
+	["openai-codex/gpt-5.6-terra", FULL_LADDER],
+	["openai-codex/gpt-6-astra", NO_OFF_LADDER],
 ]);
 
 /**
@@ -963,5 +1024,5 @@ const LADDER_BY_ID: ReadonlyMap<string, readonly ThinkingLevel[]> = new Map<stri
  * previous object-literal table answered with a function or an object (CQ6).
  */
 export function ladderFor(profile: ModelProfile): readonly ThinkingLevel[] {
-	return LADDER_BY_ID.get(profile.id) ?? ANTHROPIC_FULL_LADDER;
+	return LADDER_BY_ID.get(profile.id) ?? FULL_LADDER;
 }
