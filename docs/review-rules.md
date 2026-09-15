@@ -1,8 +1,7 @@
 # Slate review rules
 
 These rules govern machine review of worker-produced changes. Review threads
-are created dynamically. The orchestrator composes them from the confirmed size
-grade and proved focus areas.
+are created dynamically. The orchestrator composes them from the track's proved focus areas.
 
 Every review uses a fresh thread with type `reviewer` or `adversarial`. A
 reviewer is read-only. It receives repository state, the review range, its
@@ -45,14 +44,11 @@ these three clauses:
   persisted formats.
 - agreement between rule documents.
 
-| size grade | required track set |
+| track | required code-review set |
 | --- | --- |
-| SMALL | Reviewer I plus one reviewer for every proved area whose canonical gate runs per track |
-| MEDIUM | Reviewer I plus one reviewer for every proved area whose canonical gate runs per track |
-| LARGE | Reviewer I plus one reviewer for every proved area whose canonical gate runs per track |
+| every track | Reviewer I plus one reviewer for every proved area whose canonical gate runs per track |
 
-Reviewer I runs on every track at every grade. Every proved area adds its
-reviewer at every grade.
+Reviewer I runs on every track. Every proved area adds its reviewer.
 
 Reviewer I never counts against the production area-reviewer cap. The cap is
 four production area reviewers per review action. Split the action when more
@@ -427,11 +423,23 @@ Apply this ordered test to each finding that is not waived, moot, or rejected:
 3. Fix a major finding inside this change.
 4. Record every other finding with the ignored disposition.
 
+<!-- track-acceptance:begin -->
 A track packet can follow machine-review termination. It reports every ignored
-finding. At MEDIUM and LARGE, user review of each track is blocking. At SMALL,
-a multi-track packet adds no blocking acceptance gate. In a single-track change,
-the track review is the blocking final acceptance event. Pre-existing defects,
-exhausted budgets, disputed stuck-fix results, blocker lowering, and regressions
-route through [user-notes.md](user-notes.md) § Mandatory escalation set.
-Deferred work becomes a tracked issue. A project with no issue tracker records
-the deferral in its delivery record.
+finding. User acceptance of a track is blocking when that track proves at least
+one DESIGN-TRIGGERING area. A track with only REVIEWER-ONLY areas, or no proved
+area, has no mandatory track-acceptance gate. A multi-track marker for such a
+track follows completed required machine gates and the packet, after all
+blocking user notes are resolved. In a single-track change, any blocking track
+acceptance and final change acceptance are one event. Final change acceptance is
+always blocking.
+<!-- track-acceptance:end -->
+
+The marked block above is the protected acceptance unit of this document. Its
+end marker closes the unit, so later text in this document states no acceptance
+policy. The unit follows the marker convention that
+[blast-radius.md](blast-radius.md) § Focus areas and their gates describes.
+
+Pre-existing defects, exhausted budgets, disputed stuck-fix results, blocker
+lowering, and regressions route through [user-notes.md](user-notes.md) §
+Mandatory escalation set. Deferred work becomes a tracked issue. A project with
+no issue tracker records the deferral in its delivery record.

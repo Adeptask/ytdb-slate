@@ -391,7 +391,10 @@ const DOCTRINE_CONTRACT_IDS = [
 	"contract-focus-table-sync",
 	"contract-risk-definitions",
 	"contract-risk-lifecycle",
-	"contract-fast-path-artifact",
+	"contract-focus-gates",
+	"contract-acceptance-units",
+	"contract-acceptance-mutations",
+	"contract-escalation-routing",
 	"contract-test-composite",
 	"contract-review-charters",
 	"contract-section-targets",
@@ -2458,8 +2461,8 @@ try {
 				"doctrine-budget",
 				"portable doctrine budgets cover the routing rule, each representative feature basis, and one maximum-shaped all-feature fixture. The maximum fixture uses all nine shipped profiles, draft PRs, writing, two capped worker units, and four capped tools. A measured positive control adds one capped tool and six copies of the largest model row, so budget growth cannot pass vacuously",
 				[
-					["the normalisation bites: the doctrine really does embed the authoritative docs directory", docPaths === 5 && DOCS_DIR === dirname(paths.WRITING_GUIDANCE_DOC), { docPaths, DOCS_DIR }],
-					["every fixture has the exact embedded-path occurrence count", pathOccurrences(untrusted) === 3 && pathOccurrences(off) === 4 && pathOccurrences(on) === 5 && pathOccurrences(writingOn) === 4 && pathOccurrences(writingRouterOn) === 5 && pathOccurrences(writingExtensionsOn) === 4 && pathOccurrences(writingAllOn) === 5 && pathOccurrences(maximal) === 6 && pathOccurrences(maximalNoDraft) === 5 && pathOccurrences(maximalFollowUp) === 6 && pathOccurrences(dogfood) === 6 && pathOccurrences(overBudget) === 6, { untrusted: pathOccurrences(untrusted), off: pathOccurrences(off), on: pathOccurrences(on), writing: pathOccurrences(writingOn), writingRouter: pathOccurrences(writingRouterOn), writingExtensions: pathOccurrences(writingExtensionsOn), all: pathOccurrences(writingAllOn), maximal: pathOccurrences(maximal), maximalNoDraft: pathOccurrences(maximalNoDraft), followUp: pathOccurrences(maximalFollowUp), dogfood: pathOccurrences(dogfood), positive: pathOccurrences(overBudget) }],
+					["the normalisation bites: the doctrine really does embed the authoritative docs directory", docPaths === 6 && DOCS_DIR === dirname(paths.WRITING_GUIDANCE_DOC), { docPaths, DOCS_DIR }],
+					["every fixture has the exact embedded-path occurrence count", pathOccurrences(untrusted) === 4 && pathOccurrences(off) === 5 && pathOccurrences(on) === 6 && pathOccurrences(writingOn) === 5 && pathOccurrences(writingRouterOn) === 6 && pathOccurrences(writingExtensionsOn) === 5 && pathOccurrences(writingAllOn) === 6 && pathOccurrences(maximal) === 7 && pathOccurrences(maximalNoDraft) === 6 && pathOccurrences(maximalFollowUp) === 7 && pathOccurrences(dogfood) === 7 && pathOccurrences(overBudget) === 7, { untrusted: pathOccurrences(untrusted), off: pathOccurrences(off), on: pathOccurrences(on), writing: pathOccurrences(writingOn), writingRouter: pathOccurrences(writingRouterOn), writingExtensions: pathOccurrences(writingExtensionsOn), all: pathOccurrences(writingAllOn), maximal: pathOccurrences(maximal), maximalNoDraft: pathOccurrences(maximalNoDraft), followUp: pathOccurrences(maximalFollowUp), dogfood: pathOccurrences(dogfood), positive: pathOccurrences(overBudget) }],
 					["...and removing it changes the measurement, so the bounds are not raw counts", portable(on).length < on.length, { raw: on.length, portable: portable(on).length }],
 					["space-bearing docs directories normalize without parsing rendered text", spacedPortable === "read /track-workflow.md", spacedPortable],
 					["the context-budget fixture tables are derived from every rendered basis and current bound", occursOnce(contextBudgetDoc, contextFixtureTable) && occursOnce(contextBudgetDoc, contextRepresentativeTable) && occursOnce(contextBudgetDoc, contextBudgetTable), { fixture: occursOnce(contextBudgetDoc, contextFixtureTable), representative: occursOnce(contextBudgetDoc, contextRepresentativeTable), budgets: occursOnce(contextBudgetDoc, contextBudgetTable) }],
@@ -2476,29 +2479,29 @@ try {
 					["every candidate rendered a row, so the row bound is not measuring an empty set", rows.length === realCandidates.length, { rows: rows.length, candidates: realCandidates.length }],
 					["the configured-model fixture is the exact fixed six-model list", configuredCandidates.length === 6 && configuredCandidates.every((candidate) => configuredSpecs.includes(candidate.spec)) && configuredSpecs.every((spec) => configuredCandidates.some((candidate) => candidate.spec === spec)), { configuredSpecs, candidates: configuredCandidates.map((candidate) => candidate.spec) }],
 					["the fabricated dogfood fixture resolves its exact five-model list through the real router and uses pi registry context windows", dogfoodCandidates.length === dogfoodSpecs.length && dogfoodCandidates.every((candidate) => dogfoodSpecs.includes(candidate.spec)) && dogfoodCandidates.every((candidate) => candidate.contextWindow === (candidate.provider === "anthropic" ? 1_000_000 : 272_000)), { configured: dogfoodSpecs, candidates: dogfoodCandidates.map((candidate) => [candidate.spec, candidate.contextWindow]) }],
-					["the dogfood fixture is the measured 7426 portable chars and 102 lines", dogfoodPortable === 7426 && dogfood.split("\n").length === 102, { portable: dogfoodPortable, lines: dogfood.split("\n").length }],
+					["the dogfood fixture is the measured 7447 portable chars and 103 lines", dogfoodPortable === 7447 && dogfood.split("\n").length === 103, { portable: dogfoodPortable, lines: dogfood.split("\n").length }],
 					["the rule is the ONLY thing added to the doctrine when the router is on", on.length - off.length === rule.length, { on: on.length, off: off.length, rule: rule.length }],
-					["the untrusted doctrine is the measured 2710 portable chars, 43 lines, and three embedded paths", portable(untrusted).length === 2710 && untrusted.split("\n").length === 43 && pathOccurrences(untrusted) === 3, { portable: portable(untrusted).length, lines: untrusted.split("\n").length, paths: pathOccurrences(untrusted) }],
-					["the router-off trusted doctrine is the measured 4619 portable chars and 72 lines", portable(off).length === 4619 && off.split("\n").length === 72, { portable: portable(off).length, lines: off.split("\n").length }],
-					[`...and the whole router-on doctrine is the measured 7204 portable chars and 96 lines, and stays under ${WRITING_ROUTER_BOUND} with five percent reserve`, portable(on).length === 7204 && on.split("\n").length === 96 && portable(on).length <= WRITING_ROUTER_BOUND && hasDoctrineReserve(portable(on).length, WRITING_ROUTER_BOUND), { portable: portable(on).length, raw: on.length, lines: on.split("\n").length }],
-					[`writing and design doctrine is the measured 4619 portable chars and 72 lines, and stays under ${DOCTRINE_LIMITS.writingAndDesignChars} with five percent reserve`, portable(writingOn).length === 4619 && writingOn.split("\n").length === 72 && portable(writingOn).length <= DOCTRINE_LIMITS.writingAndDesignChars && hasDoctrineReserve(portable(writingOn).length, DOCTRINE_LIMITS.writingAndDesignChars), { portable: portable(writingOn).length, lines: writingOn.split("\n").length }],
-					["draft-enabled router-off doctrine is 4638 portable chars and 72 lines", portable(offDraft).length === 4638 && offDraft.split("\n").length === 72, { portable: portable(offDraft).length, lines: offDraft.split("\n").length }],
-					["draft-enabled router-off writing doctrine is 4638 portable chars and 72 lines", portable(offDraftWriting).length === 4638 && offDraftWriting.split("\n").length === 72, { portable: portable(offDraftWriting).length, lines: offDraftWriting.split("\n").length }],
-					["the six-model fixture is 6649 portable chars and 93 lines without draft publishing", portable(configuredOffDraft).length === 6649 && configuredOffDraft.split("\n").length === 93, { portable: portable(configuredOffDraft).length, lines: configuredOffDraft.split("\n").length }],
-					["the six-model fixture is 6649 portable chars and 93 lines with writing", portable(configuredOffDraftWriting).length === 6649 && configuredOffDraftWriting.split("\n").length === 93, { portable: portable(configuredOffDraftWriting).length, lines: configuredOffDraftWriting.split("\n").length }],
-					["the six-model draft fixture is 6668 portable chars and 93 lines", portable(configuredDraft).length === 6668 && configuredDraft.split("\n").length === 93, { portable: portable(configuredDraft).length, lines: configuredDraft.split("\n").length }],
-					["the six-model draft and writing fixture is 6668 portable chars and 93 lines", portable(configuredDraftWriting).length === 6668 && configuredDraftWriting.split("\n").length === 93, { portable: portable(configuredDraftWriting).length, lines: configuredDraftWriting.split("\n").length }],
-					[`writing plus router is the measured 7204 portable chars and 96 lines, and stays under ${WRITING_ROUTER_BOUND} with five percent reserve`, portable(writingRouterOn).length === 7204 && writingRouterOn.split("\n").length === 96 && portable(writingRouterOn).length <= WRITING_ROUTER_BOUND && hasDoctrineReserve(portable(writingRouterOn).length, WRITING_ROUTER_BOUND), { portable: portable(writingRouterOn).length, lines: writingRouterOn.split("\n").length }],
-					[`writing plus extensions is the measured 4874 portable chars and 78 lines, and stays under ${DOCTRINE_LIMITS.writingPlusExtensionsChars} with five percent reserve`, portable(writingExtensionsOn).length === 4874 && writingExtensionsOn.split("\n").length === 78 && portable(writingExtensionsOn).length <= DOCTRINE_LIMITS.writingPlusExtensionsChars && hasDoctrineReserve(portable(writingExtensionsOn).length, DOCTRINE_LIMITS.writingPlusExtensionsChars), { portable: portable(writingExtensionsOn).length, lines: writingExtensionsOn.split("\n").length }],
-					[`all three tail features are the measured 7459 portable chars and 102 lines, and stay under ${ALL_TAILS_BOUND} with five percent reserve`, portable(writingAllOn).length === 7459 && writingAllOn.split("\n").length === 102 && portable(writingAllOn).length <= ALL_TAILS_BOUND && hasDoctrineReserve(portable(writingAllOn).length, ALL_TAILS_BOUND), { portable: portable(writingAllOn).length, lines: writingAllOn.split("\n").length }],
-					["the all-nine draft fixture is 7223 portable chars and 96 lines", portable(allDraft).length === 7223 && allDraft.split("\n").length === 96, { portable: portable(allDraft).length, lines: allDraft.split("\n").length }],
-					["the all-nine draft and writing fixture is 7223 portable chars and 96 lines", portable(allDraftWriting).length === 7223 && allDraftWriting.split("\n").length === 96, { portable: portable(allDraftWriting).length, lines: allDraftWriting.split("\n").length }],
+					["the untrusted doctrine is the measured 2731 portable chars, 44 lines, and four embedded paths", portable(untrusted).length === 2731 && untrusted.split("\n").length === 44 && pathOccurrences(untrusted) === 4, { portable: portable(untrusted).length, lines: untrusted.split("\n").length, paths: pathOccurrences(untrusted) }],
+					["the router-off trusted doctrine is the measured 4640 portable chars and 73 lines", portable(off).length === 4640 && off.split("\n").length === 73, { portable: portable(off).length, lines: off.split("\n").length }],
+					[`...and the whole router-on doctrine is the measured 7225 portable chars and 97 lines, and stays under ${WRITING_ROUTER_BOUND} with five percent reserve`, portable(on).length === 7225 && on.split("\n").length === 97 && portable(on).length <= WRITING_ROUTER_BOUND && hasDoctrineReserve(portable(on).length, WRITING_ROUTER_BOUND), { portable: portable(on).length, raw: on.length, lines: on.split("\n").length }],
+					[`writing and design doctrine is the measured 4640 portable chars and 73 lines, and stays under ${DOCTRINE_LIMITS.writingAndDesignChars} with five percent reserve`, portable(writingOn).length === 4640 && writingOn.split("\n").length === 73 && portable(writingOn).length <= DOCTRINE_LIMITS.writingAndDesignChars && hasDoctrineReserve(portable(writingOn).length, DOCTRINE_LIMITS.writingAndDesignChars), { portable: portable(writingOn).length, lines: writingOn.split("\n").length }],
+					["draft-enabled router-off doctrine is 4659 portable chars and 73 lines", portable(offDraft).length === 4659 && offDraft.split("\n").length === 73, { portable: portable(offDraft).length, lines: offDraft.split("\n").length }],
+					["draft-enabled router-off writing doctrine is 4659 portable chars and 73 lines", portable(offDraftWriting).length === 4659 && offDraftWriting.split("\n").length === 73, { portable: portable(offDraftWriting).length, lines: offDraftWriting.split("\n").length }],
+					["the six-model fixture is 6670 portable chars and 94 lines without draft publishing", portable(configuredOffDraft).length === 6670 && configuredOffDraft.split("\n").length === 94, { portable: portable(configuredOffDraft).length, lines: configuredOffDraft.split("\n").length }],
+					["the six-model fixture is 6670 portable chars and 94 lines with writing", portable(configuredOffDraftWriting).length === 6670 && configuredOffDraftWriting.split("\n").length === 94, { portable: portable(configuredOffDraftWriting).length, lines: configuredOffDraftWriting.split("\n").length }],
+					["the six-model draft fixture is 6689 portable chars and 94 lines", portable(configuredDraft).length === 6689 && configuredDraft.split("\n").length === 94, { portable: portable(configuredDraft).length, lines: configuredDraft.split("\n").length }],
+					["the six-model draft and writing fixture is 6689 portable chars and 94 lines", portable(configuredDraftWriting).length === 6689 && configuredDraftWriting.split("\n").length === 94, { portable: portable(configuredDraftWriting).length, lines: configuredDraftWriting.split("\n").length }],
+					[`writing plus router is the measured 7225 portable chars and 97 lines, and stays under ${WRITING_ROUTER_BOUND} with five percent reserve`, portable(writingRouterOn).length === 7225 && writingRouterOn.split("\n").length === 97 && portable(writingRouterOn).length <= WRITING_ROUTER_BOUND && hasDoctrineReserve(portable(writingRouterOn).length, WRITING_ROUTER_BOUND), { portable: portable(writingRouterOn).length, lines: writingRouterOn.split("\n").length }],
+					[`writing plus extensions is the measured 4895 portable chars and 79 lines, and stays under ${DOCTRINE_LIMITS.writingPlusExtensionsChars} with five percent reserve`, portable(writingExtensionsOn).length === 4895 && writingExtensionsOn.split("\n").length === 79 && portable(writingExtensionsOn).length <= DOCTRINE_LIMITS.writingPlusExtensionsChars && hasDoctrineReserve(portable(writingExtensionsOn).length, DOCTRINE_LIMITS.writingPlusExtensionsChars), { portable: portable(writingExtensionsOn).length, lines: writingExtensionsOn.split("\n").length }],
+					[`all three tail features are the measured 7480 portable chars and 103 lines, and stay under ${ALL_TAILS_BOUND} with five percent reserve`, portable(writingAllOn).length === 7480 && writingAllOn.split("\n").length === 103 && portable(writingAllOn).length <= ALL_TAILS_BOUND && hasDoctrineReserve(portable(writingAllOn).length, ALL_TAILS_BOUND), { portable: portable(writingAllOn).length, lines: writingAllOn.split("\n").length }],
+					["the all-nine draft fixture is 7244 portable chars and 97 lines", portable(allDraft).length === 7244 && allDraft.split("\n").length === 97, { portable: portable(allDraft).length, lines: allDraft.split("\n").length }],
+					["the all-nine draft and writing fixture is 7244 portable chars and 97 lines", portable(allDraftWriting).length === 7244 && allDraftWriting.split("\n").length === 97, { portable: portable(allDraftWriting).length, lines: allDraftWriting.split("\n").length }],
 					// Update exact measurements with production wording in the same commit.
-					[`the maximum all-feature fixture is the measured 8570 portable chars and 106 lines, and stays within ${MAXIMAL_BOUND} with five percent reserve`, maximalPortable === 8570 && maximal.split("\n").length === 106 && maximalPortable <= MAXIMAL_BOUND && hasDoctrineReserve(maximalPortable, MAXIMAL_BOUND), { portable: maximalPortable, raw: maximal.length, lines: maximal.split("\n").length, profiles: realCandidates.length, units: MAX_EXT.units.length, tools: MAX_EXT.units.reduce((n, unit) => n + unit.tools.length, 0) }],
-					[`the draft-PR-disabled maximum fixture is pinned independently at 8551 portable chars and 106 lines, and shares the ${MAXIMAL_BOUND} maximum bound`, maximalNoDraftPortable === 8551 && maximalNoDraft.split("\n").length === 106 && maximalNoDraftPortable <= MAXIMAL_BOUND && hasDoctrineReserve(maximalNoDraftPortable, MAXIMAL_BOUND), { portable: maximalNoDraftPortable, raw: maximalNoDraft.length, lines: maximalNoDraft.split("\n").length, profiles: realCandidates.length, units: MAX_EXT.units.length, tools: MAX_EXT.units.reduce((n, unit) => n + unit.tools.length, 0) }],
+					[`the maximum all-feature fixture is the measured 8591 portable chars and 107 lines, and stays within ${MAXIMAL_BOUND} with five percent reserve`, maximalPortable === 8591 && maximal.split("\n").length === 107 && maximalPortable <= MAXIMAL_BOUND && hasDoctrineReserve(maximalPortable, MAXIMAL_BOUND), { portable: maximalPortable, raw: maximal.length, lines: maximal.split("\n").length, profiles: realCandidates.length, units: MAX_EXT.units.length, tools: MAX_EXT.units.reduce((n, unit) => n + unit.tools.length, 0) }],
+					[`the draft-PR-disabled maximum fixture is pinned independently at 8572 portable chars and 107 lines, and shares the ${MAXIMAL_BOUND} maximum bound`, maximalNoDraftPortable === 8572 && maximalNoDraft.split("\n").length === 107 && maximalNoDraftPortable <= MAXIMAL_BOUND && hasDoctrineReserve(maximalNoDraftPortable, MAXIMAL_BOUND), { portable: maximalNoDraftPortable, raw: maximalNoDraft.length, lines: maximalNoDraft.split("\n").length, profiles: realCandidates.length, units: MAX_EXT.units.length, tools: MAX_EXT.units.reduce((n, unit) => n + unit.tools.length, 0) }],
 					[`the capped worker rule is the measured 1347 chars and 11 split lines, and stays within ${DOCTRINE_LIMITS.cappedWorkerRuleChars} with five percent reserve`, workerRule.length === 1347 && workerRule.split("\n").length === 11 && workerRule.length <= DOCTRINE_LIMITS.cappedWorkerRuleChars && hasDoctrineReserve(workerRule.length, DOCTRINE_LIMITS.cappedWorkerRuleChars), { chars: workerRule.length, lines: workerRule.split("\n").length }],
 					["the maximum model-row and tool-line increments are positive and measured", maxModelIncrement.growth === 184 && maxToolIncrement === 212, { maxModelIncrement, maxToolIncrement, modelIncrements }],
-					[`the positive control is the measured 9886 portable chars and 113 lines, and exceeds ${MAXIMAL_BOUND} by the larger growth unit`, overBudgetPortable === 9886 && overBudget.split("\n").length === 113 && overBudgetPortable > MAXIMAL_BOUND && overBudgetPortable - MAXIMAL_BOUND >= Math.max(maxModelIncrement.growth, maxToolIncrement), { portable: overBudgetPortable, lines: overBudget.split("\n").length, bound: MAXIMAL_BOUND, growthBeyondBound: overBudgetPortable - MAXIMAL_BOUND, maxModelIncrement, maxToolIncrement }],
+					[`the positive control is the measured 9907 portable chars and 114 lines, and exceeds ${MAXIMAL_BOUND} by the larger growth unit`, overBudgetPortable === 9907 && overBudget.split("\n").length === 114 && overBudgetPortable > MAXIMAL_BOUND && overBudgetPortable - MAXIMAL_BOUND >= Math.max(maxModelIncrement.growth, maxToolIncrement), { portable: overBudgetPortable, lines: overBudget.split("\n").length, bound: MAXIMAL_BOUND, growthBeyondBound: overBudgetPortable - MAXIMAL_BOUND, maxModelIncrement, maxToolIncrement }],
 					// Exact measurements are maintenance tripwires, not timeless facts. Update them
 					// with the wording change in the same commit. Remeasure through this doctrine-budget
 					// check, which renders the production before_agent_start hook and normalizes paths.
@@ -2514,7 +2517,7 @@ try {
 				"doctrine-budget-deferred",
 				"the trusted deferred-issue configuration has its own pinned maximum fixture and preserves the existing maximum bound",
 				[
-					[`the maximal deferred-issue fixture is the measured 8644 portable chars and 107 lines, and stays within ${MAXIMAL_BOUND} with five percent reserve`, maximalFollowUpPortable === 8644 && maximalFollowUp.split("\n").length === 107 && maximalFollowUpPortable <= MAXIMAL_BOUND && hasDoctrineReserve(maximalFollowUpPortable, MAXIMAL_BOUND), { portable: maximalFollowUpPortable, raw: maximalFollowUp.length, lines: maximalFollowUp.split("\n").length, reserveRequired: Math.ceil(maximalFollowUpPortable * 1.05), bound: MAXIMAL_BOUND }],
+					[`the maximal deferred-issue fixture is the measured 8665 portable chars and 108 lines, and stays within ${MAXIMAL_BOUND} with five percent reserve`, maximalFollowUpPortable === 8665 && maximalFollowUp.split("\n").length === 108 && maximalFollowUpPortable <= MAXIMAL_BOUND && hasDoctrineReserve(maximalFollowUpPortable, MAXIMAL_BOUND), { portable: maximalFollowUpPortable, raw: maximalFollowUp.length, lines: maximalFollowUp.split("\n").length, reserveRequired: Math.ceil(maximalFollowUpPortable * 1.05), bound: MAXIMAL_BOUND }],
 				],
 			);
 		});
@@ -4008,10 +4011,12 @@ both outcomes. A complete mechanical rename remains excluded when every site is
 shown and can be checked alone. An incomplete rename can engage when the missing
 site owes a matching edit.
 
-A proof for this area keeps the standard three parts. The defect class is the
+A proof for this area keeps the standard four parts. The defect class is the
 shared relation that can fail. The standard place field lists the changed place
 and every other place that must satisfy that relation. The consequence is the
-forbidden or missing result.
+forbidden or missing result. The review contribution names what the area
+reviewer can trace between those places, the evidence it reads there, and why
+the planned checks cannot settle the relation.
 
 - **Concurrency defect.** An unsatisfied agreement that appears only because two
   or more executions may overlap or may run in another order belongs to
@@ -4063,7 +4068,7 @@ forbidden or missing result.
 
 The first three answers must all be yes, or the fourth answer can be yes on its own. The review base is the base endpoint of the declared review range. The candidate is the candidate endpoint of that range. Compare those two snapshots, including unreleased code. A version number, release label, changelog or publication state does not override the declared endpoints. A consumer-reachable surface is a name that a published entry point exports, an argument or option of a shipped command, an exit status of a shipped command, the machine-readable output of a shipped command, a configuration key together with the value used when it is absent, a record or file that the project writes and later reads, or a shipped statement about what the project accepts or produces. An internal name, a moved file or a helper that no published entry point exposes does not trigger the area. An addition that leaves every permitted base use unchanged does not trigger it. Human-readable wording, layout and log text do not trigger it. A file that the project may discard or rebuild without a consumer noticing does not trigger it. Version numbers, release labels, changelogs and counts neither trigger nor clear it. A defect correction triggers it when an unchanged consumer's result changes, even when the base result contradicted the published document. A surface introduced in the candidate, which no consumer can reach from the review base, triggers it only through the fourth question.
 
-A proof for this area keeps the standard three parts. The defect class is the kind of break: a withdrawn name, a changed default, a changed exit status, a changed output shape, a narrowed input, or a format that the base reader cannot read in the candidate. The place names the consumer-reachable surface and the compared revisions in the declared review range, together with the concrete export, option, key, exit status or record. The consequence is what the unchanged consumer experiences in the candidate: a failed run, a silently different result, or data that it can no longer read.
+A proof for this area keeps the standard four parts. The defect class is the kind of break: a withdrawn name, a changed default, a changed exit status, a changed output shape, a narrowed input, or a format that the base reader cannot read in the candidate. The place names the consumer-reachable surface and the compared revisions in the declared review range, together with the concrete export, option, key, exit status or record. The consequence is what the unchanged consumer experiences in the candidate: a failed run, a silently different result, or data that it can no longer read. The review contribution names what the area reviewer can compare across the declared review range, the surface evidence it reads, and why the planned checks cannot show the unchanged consumer's experience.
 
 #### Boundaries
 
@@ -4087,7 +4092,7 @@ Each pairing below engages both areas only when each area independently meets it
 
 The change must add, alter or remove a rule for people or agents who produce, review, verify, publish or release work, or alter the machinery that enforces it. A product contract is outside this trigger. A change that only obeys an existing rule does not trigger the area. Counts and readability or coverage scores neither trigger nor clear it. A wording change that leaves every obligation the same does not trigger it. A record of a past rule that no reader must follow today does not trigger it.
 
-A proof for this area keeps the standard three parts. The defect class is which of the five questions answers yes. The place is the changed rule together with the other rule, copy or enforcing check that must agree with it. The consequence is the work that then proceeds without its check, or the two conflicting ways in which two readers act.
+A proof for this area keeps the standard four parts. The defect class is which of the five questions answers yes. The place is the changed rule together with the other rule, copy or enforcing check that must agree with it. The consequence is the work that then proceeds without its check, or the two conflicting ways in which two readers act. The review contribution names what the area reviewer can compare between the rule, its other copies and its enforcing check, and why the planned checks cannot show that disagreement.
 
 ---
 
@@ -4110,7 +4115,7 @@ Each pairing below engages both areas only when each area independently meets it
 
 A signal is one observable event, for example a non-zero exit status, a message on the error stream, a rejected input with a stated reason, a failing check, a recorded event or an error handed to a caller. A dropped entry with no report, an error that is caught and discarded, a return status that no caller reads, a write that nothing verifies and a fallback that replaces a failure with a normal-looking result each trigger the area. A change that adds no new way to fail does not trigger it. A failure that reaches a reporter the change keeps and shows does not trigger it. A wrong value from an execution that met no failure does not trigger it. A change whose only affected artifact is a project test or check belongs to test-quality defect and does not trigger this area. A removed signal triggers the area unless the change shows that the failure it reported can no longer happen. Counts do not decide the result.
 
-A proof for this area keeps the standard three parts. The defect class is the failure mode that carries no signal. The place is the failure site together with the boundary that owes the report. The consequence is what proceeds, spreads or completes as an apparent success while the failure stays unknown.
+A proof for this area keeps the standard four parts. The defect class is the failure mode that carries no signal. The place is the failure site together with the boundary that owes the report. The consequence is what proceeds, spreads or completes as an apparent success while the failure stays unknown. The review contribution names the failure path the area reviewer can drive or inspect, the signal evidence it looks for, and why the planned checks cannot show the missing report.
 
 #### Boundaries
 
@@ -4129,33 +4134,69 @@ Areas may engage together when each area meets its own trigger. The unreported f
 				["retired definition markers are absent", oldDefinitionMarkers.every((name) => block(blast, name).count === 0 && block(blast, name).endCount === 0), oldDefinitionMarkers.filter((name) => block(blast, name).count !== 0 || block(blast, name).endCount !== 0)],
 			]);
 
-			const riskLifecycle = normalizeText(workflow.match(/^## Risk planning and reconciliation\n([\s\S]*?)(?=^## Fast path)/m)?.[1] ?? "");
+			const riskLifecycle = normalizeText(workflow.match(/^## Risk planning and reconciliation\n([\s\S]*?)(?=^## Track intention block and implementer response)/m)?.[1] ?? "");
 			const proofSection = normalizeText(blast.match(/^### Judged proof and risk record\n([\s\S]*?)(?=^## Optional path declarations)/m)?.[1] ?? "");
-			const expectedRiskLifecycle = normalizeText(`The orchestrator names engaged focus areas during track planning. Engagement is
-judged for the whole track and its planned change, not for each file. The
-orchestrator writes all eleven risk-record lines. Each named area gets the
-three-part proof defined in [blast-radius.md](blast-radius.md) § Judged proof
-and risk record. Each non-engagement line states which trigger part answers no.
+			const expectedRiskLifecycle = normalizeText(`The orchestrator judges each focus area for the whole planned track, not for
+each file. It writes all eleven risk-record lines. A NAMED line carries the
+four-part proof defined in [blast-radius.md](blast-radius.md) § Judged proof
+and risk record. Each other line states which trigger part answers no. The user
+alone judges each proof. User approval makes the area proved. User rejection
+makes it SKIPPED. A SKIPPED area adds no gate or reviewer.
 
 The proof basis is the approved track design. When the track has no design, the
-basis is the track intention block and planned file list. The user approves the
-record at every confirmation gate. The adversarial design review checks the
-whole record when that review runs. The design stage is the only stage where an
+basis is the track intention block and planned file list. The user approves or
+rejects every NAMED proof at the confirmation gate. When a design exists, the
+user validates it before the orchestrator reconfirms all eleven lines against
+that design. The orchestrator presents every addition and removal with its proof
+or failed trigger part. User approval of the reconfirmed list precedes one
+adversarial design review for each proved DESIGN-TRIGGERING area. Final design
+approval follows those reviews. The design stage is the only stage where an
 adversarial thread receives the record. A stuck-fix consultation receives none.
 
-A track design change that newly engages an area needs a proof and user
-approval before review of that track. Before review, the orchestrator compares
-the committed difference with the proved set. It may add a missed proved area
-and its reviewer without a blocking user gate. It may drop a proved area that
-no longer engages. The track packet reports either change.
+Before code review, the orchestrator compares the committed difference with the
+proved set. A missed area follows the late-area route below. For an area that no
+longer engages, record the failed trigger part and present a removal proposal to
+the user at once. The area remains proved, with all of its gates and reviewers,
+until the user approves removal. Rejection preserves the proved area. Keep every
+reviewer that already covered completed work. The track packet reports every
+addition, proposed or approved removal, SKIPPED state, user decision, and
+reviewer-coverage decision.
+
+When the orchestrator or implementer discovers a late area, the orchestrator
+presents its four-part proof to the user at once. Approval adds its code
+reviewer. Approval of a DESIGN-TRIGGERING area also enters or re-enters the design
+sequence for remaining affected work unless the user records a decision to skip
+that gate. Present any necessary new, revised, or materially clarified design
+before continuing that work. Reuse unchanged approved design and completed
+applicable gates, but run the newly required area-specific design review.
+Completed work receives no retrospective design gate. When no work remains,
+record the skip, review the completed range with the added reviewer, and present
+the record at final acceptance.
 
 The implementer reports any risk that the plan did not name. The orchestrator
-writes its proof, adds its reviewer, and reports both in the track packet. An
+writes its proof and starts the same immediate user-decision route. An
 implementation reviewer receives no proof.`);
 			const expectedProofSection = normalizeText(`The orchestrator records one line for every area. A named line gives a concrete
-three-part proof. The proof states the defect class, the place in the planned
-change where it can occur, and the consequence. A non-engagement line states
-which part of the trigger answers no.
+four-part proof. A line that is not NAMED states which part of the trigger
+answers no. A NAMED line becomes proved only through user approval. A rejected
+NAMED line becomes SKIPPED and adds no gate or reviewer.
+
+Every NAMED proof has these four parts:
+
+1. **Defect class.** State the kind of defect that the area covers.
+2. **Place.** State the place in the planned change where it can occur.
+3. **Material consequence.** State the consequence of omitting the area
+   reviewer.
+4. **Review contribution.** Identify a concrete review action that can
+   materially reduce the stated risk. Name the evidence the specialized reviewer
+   can examine or obtain. Explain how that action could expose the defect or a
+   missing safeguard before acceptance. Explain why ordinary implementation and
+   its planned checks are insufficient for this risk.
+
+Planned checks means the implementation validation and test commands. It
+excludes every separate reviewer, including Reviewer I. The review contribution
+promises no guaranteed detection. It makes no comparison with another reviewer.
+A short method and a configuration change receive no automatic exemption.
 
 The proof basis is the approved track design. When the track has no design, the
 basis is the track intention block and planned file list. The risk record is
@@ -4169,72 +4210,279 @@ material when loss of that control would be material. A cosmetic consequence
 is not material. A proof is not convincing when its words would also fit a
 change that does not engage the area.
 
-No rule mechanically decides whether a proof holds. The adversarial design
-review judges the whole record when that review runs. The user judges the whole
-record at every confirmation gate. An area whose proof convinces neither reader
-is skipped. A skipped area gets no reviewer. The skip is recorded and is not an
-escalation. A track with no proved area still gets Reviewer I and every gate its
-grade requires.
+No rule mechanically decides whether a proof holds. The user alone judges every
+proof at the confirmation gate and at focus reconfirmation. A SKIPPED area gets
+no gate or reviewer. The skip is recorded and is not an escalation. A track with
+no proved area still gets Reviewer I.
 
 Reviewer composition and merging belong to
 [review-rules.md](review-rules.md) § Reviewer sets, merge rule and charters.`);
-			const ownerMutation = riskLifecycle.replace("The orchestrator names", "The implementer names");
-			const proofMutation = proofSection.replace("Project tooling counts.", "Project tooling does not count.");
-			checkAll("contract-risk-lifecycle", "orchestrator ownership, judged proof, approval, reconciliation, and implementer reporting stay complete while the retired declaration protocol stays absent", [
-				["risk lifecycle is exact", riskLifecycle === expectedRiskLifecycle, riskLifecycle],
+			const ownerMutation = riskLifecycle.replace("The orchestrator judges", "The implementer judges");
+			const proofMutation = proofSection.replace("becomes proved only through user approval", "becomes proved when NAMED");
+			const skippedMutation = proofSection.replace("SKIPPED and adds no gate or reviewer", "SKIPPED and adds its reviewer");
+			checkAll("contract-risk-lifecycle", "orchestrator ownership, user-judged proof states, design reconfirmation, removal approval, late-area reuse and routing, and implementer reporting stay complete", [
+				["risk lifecycle is exact through its stable next heading", riskLifecycle === expectedRiskLifecycle, riskLifecycle],
 				["judged proof section is exact", proofSection === expectedProofSection, proofSection],
-				["ownership mutation fails exact comparison", ownerMutation !== riskLifecycle && ownerMutation !== expectedRiskLifecycle, ownerMutation],
-				["materiality mutation fails exact comparison", proofMutation !== proofSection && proofMutation !== expectedProofSection, proofMutation],
-				["new-track approval is explicit", /new track created after the original confirmation gate needs\nuser approval of its risk record before implementation starts/.test(workflow), workflow.slice(0, 1200)],
+				["ownership mutation fails exact comparison", ownerMutation !== expectedRiskLifecycle, ownerMutation],
+				["wrong proof-state mutation fails exact comparison", proofMutation !== proofSection && proofMutation !== expectedProofSection, proofMutation],
+				["SKIPPED-approval mutation fails exact comparison", skippedMutation !== expectedProofSection, skippedMutation],
+				["new-track approval is explicit", /new track created after the original confirmation gate needs user approval of\nits independent risk record before implementation starts/.test(workflow), workflow.match(/.{0,100}new track created.{0,180}/s)?.[0]],
 				["implementer reports one unplanned-risk line", /ends its response with `unplanned risk: none` or one line/.test(workflow), workflow.match(/.{0,100}unplanned risk.{0,140}/s)?.[0]],
-				["retired declaration protocol is absent from all workflow documents", !/focus declaration|focus: <area name>|missing declaration|retry the implementer once/i.test(workflowDocs), workflowDocs.match(/.{0,80}(?:focus declaration|focus: <area name>|missing declaration|retry the implementer once).{0,100}/is)?.[0]],
 			]);
 
-			const fastPath = workflow.match(/^## Fast path\n([\s\S]*?)(?=^## Track packet shape)/m)?.[1] ?? "";
-			const checklist = [...fastPath.matchAll(/^\d+\. (.+)$/gm)].map((match) => match[1]);
-			const expectedFastPath = normalizeText(`A SMALL single-track change may use the fast path only when every item passes.
+			const focusGates = normalizeText(workflow.match(/^## Focus classes and gates\n([\s\S]*?)(?=^<!-- focus-area-table:begin -->)/m)?.[1] ?? "");
+			const phases = normalizeText(workflow.match(/The mandatory phases run in this order:[\s\S]*?9\. deliver\./)?.[0] ?? "");
+			const designEntry = normalizeText(workflow.match(/Before each track implementation,[\s\S]*?(?=If the planned split exceeds)/)?.[0] ?? "");
+			const wrongState = focusGates.replace("Only a proved area", "A NAMED area");
+			const skippedApproval = focusGates.replace("Only a proved area adds a focus-dependent gate or area reviewer.", "A SKIPPED area adds an area reviewer.");
+			const reviewerRow = reviews.match(/^\| every track \| Reviewer I plus one reviewer for every proved area whose canonical gate runs per track \|$/m)?.[0] ?? "";
+			const markerRule = normalizeText(workflow.match(/A multi-track boundary adds one empty marker commit[\s\S]*?(?=```bash)/)?.[0] ?? "");
+			checkAll("contract-focus-gates", "effective focus states, conditional design phases, per-track design entry, approved removals, marker availability, late-area routing, and the retained Reviewer I floor are explicit. The acceptance policy itself belongs to contract-acceptance-units and contract-acceptance-mutations", [
+				["both focus classes and the area-reviewer qualifier are present", /DESIGN-TRIGGERING areas are/.test(focusGates) && /REVIEWER-ONLY areas are/.test(focusGates) && /Only a proved area adds a focus-dependent gate or area reviewer/.test(focusGates), focusGates],
+				["Reviewer I is the explicit exception to focus-dependent reviewers", /Reviewer I is the explicit current exception/.test(focusGates), focusGates],
+				["no-design phases skip design-only gates while final acceptance remains mandatory", /when a design exists, reconfirm/.test(phases) && /when a design exists, run one adversarial design review/.test(phases) && /when a design exists, obtain final design approval/.test(phases) && /obtain blocking final acceptance/.test(phases), phases],
+				["design validation and reconfirmation precede one area adversary and final approval", /user validation, focus reconfirmation, its own adversarial\s*design reviewer, and final design approval/.test(focusGates), focusGates],
+				["each track assesses design coverage and re-enters before affected implementation", /Before each track implementation/.test(designEntry) && /newly proves a DESIGN-TRIGGERING area[\s\S]*?enter or re-enter the design sequence[\s\S]*?before the affected implementation/.test(designEntry) && /Reuse adequate unchanged approved design and completed applicable gates/.test(designEntry) && /Reusing text does not bypass a newly required area-specific design review/.test(designEntry) && /Routine low-level design choices need no user approval unless[\s\S]*?change approved behavior or constraints/.test(designEntry), designEntry],
+				["proved-area removal needs user approval and rejection preserves all gates", /area remains proved, with all of its gates and reviewers,\s*until the user approves removal/.test(riskLifecycle) && /Rejection preserves the proved area/.test(riskLifecycle), riskLifecycle],
+				["user-requested track fixes are unconditional", /applies and commits required user-review\s+fixes whenever the user requests them/.test(workflow), workflow.match(/.{0,100}required user-review.{0,160}/s)?.[0]],
+				["marker exists without track acceptance after machine gates, packet, and blocking notes", /after required machine gates and the track packet are complete/.test(markerRule) && /all blocking user notes are resolved/.test(markerRule) && /When track acceptance is mandatory/.test(markerRule), markerRule],
+				["late areas require immediate user decision and no retrospective design gate", /presents its four-part proof to the user at once/.test(riskLifecycle) && /Completed work receives no retrospective design gate/.test(riskLifecycle), riskLifecycle],
+				["Reviewer I floor remains exact", reviewerRow === "| every track | Reviewer I plus one reviewer for every proved area whose canonical gate runs per track |", reviewerRow],
+				["wrong proof state fails", wrongState !== focusGates && !/Only a proved area adds a focus-dependent gate or area reviewer/.test(wrongState), wrongState],
+				["SKIPPED approval mutation fails", skippedApproval !== focusGates && !/Only a proved area adds a focus-dependent gate or area reviewer/.test(skippedApproval), skippedApproval],
+			]);
 
-1. The outcome is mechanical and has one clear implementation.
-2. The change intends no edit to an existing consumer-reachable rule.
-3. No sensitive configuration changes.
-4. The change cannot cause a test-quality defect.
-5. No verification, gate, coverage, packaging, release, or workflow machinery changes.
-6. The change remains within the declared file list.
-7. One mechanical validation can establish the result.
-8. The orchestrator judges that the change needs no adversarial design review.
+			// ------------------------------------------ the acceptance-policy units --
+			/**
+			 * ONE canonical record of every acceptance fact the protected units state,
+			 * and the ONLY expected source of acceptance policy in this harness. The
+			 * three outcomes are its outcome subset; `merger`, `markerOrder` and
+			 * `markerWithoutAcceptance` are the acceptance facts the earlier exact
+			 * copies already pinned, so dropping one here is a visible policy loss and
+			 * not an invisible narrowing (DNL19).
+			 *
+			 * Each fact carries the wording of its renderings: `document` for a shipped
+			 * document, `doctrine` for the rendered session instructions, which are
+			 * compressed on purpose and paid for on every turn. A rendering is a
+			 * rendering of the SAME fact, never a second expected source. The inverted
+			 * wordings exist for the mutation check below and are never expected text.
+			 */
+			const ACCEPTANCE_FACTS = Object.freeze({
+				blocking: Object.freeze({
+					document: "User acceptance of a track is blocking when that track proves at least one DESIGN-TRIGGERING area.",
+					doctrine: "blocking track acceptance.",
+					invertedDocument: "User acceptance of a track is optional when that track proves at least one DESIGN-TRIGGERING area.",
+					invertedDoctrine: "optional track acceptance.",
+				}),
+				noMandatory: Object.freeze({
+					document: "A track with only REVIEWER-ONLY areas, or no proved area, has no mandatory track-acceptance gate.",
+					doctrine: "REVIEWER-ONLY or no-area tracks need no track acceptance.",
+					invertedDocument: "A track with only REVIEWER-ONLY areas, or no proved area, has a mandatory track-acceptance gate.",
+					invertedDoctrine: "REVIEWER-ONLY or no-area tracks need blocking track acceptance.",
+				}),
+				finalBlocking: Object.freeze({
+					document: "Final change acceptance is always blocking.",
+					doctrine: "Final acceptance always blocks.",
+				}),
+				merger: Object.freeze({
+					document: "In a single-track change, any blocking track acceptance and final change acceptance are one event.",
+				}),
+				markerOrder: Object.freeze({
+					document: "The orchestrator cannot add the marker or start the next track until the user accepts that track and every requested fix.",
+				}),
+				markerWithoutAcceptance: Object.freeze({
+					document: "A multi-track marker for such a track follows completed required machine gates and the packet, after all blocking user notes are resolved.",
+				}),
+			});
+			/** A segment that renders one canonical fact. A plain string is local framing. */
+			const fact = (key) => ({ fact: key });
+			const renderFact = (facts, key, rendering) => facts[key]?.[rendering] ?? "";
+			const composeUnit = (unit, facts) => normalizeText(unit.segments.map((segment) => typeof segment === "string" ? segment : renderFact(facts, segment.fact, unit.rendering)).join(" "));
+			/**
+			 * Resolution is EXACT-ONCE and FAILS CLOSED: zero matches, several matches or
+			 * an unusable marked block all report count !== 1 and empty text, so a moved
+			 * anchor cannot silently turn a protected unit into no check at all.
+			 */
+			const regionUnit = (pattern) => (source) => {
+				const matches = [...source.matchAll(pattern)].map((match) => normalizeText(match[1] ?? "")).filter((text) => text !== "");
+				return { count: matches.length, text: matches.length === 1 ? matches[0] : "" };
+			};
+			const markedUnit = (name) => (source) => {
+				const found = block(source, name);
+				const resolved = found.count === 1 && found.endCount === 1 && found.text !== "";
+				const pairs = Math.max(found.count, found.endCount);
+				return { count: resolved ? 1 : pairs > 1 ? pairs : 0, text: resolved ? normalizeText(found.text) : "" };
+			};
+			const focusClassesPattern = /^## Focus classes and gates\n([\s\S]*?)(?=^<!-- focus-area-table:begin -->)/gm;
+			// The rendered session instructions, through the production doctrine builder.
+			const sessionDoctrine = await doctrine(we.EMPTY_WORKER_EXTENSION_SET, undefined, true, {});
+			const acceptanceUnits = [
+				{
+					id: "workflow-focus-classes",
+					where: "docs/track-workflow.md § Focus classes and gates",
+					rendering: "document",
+					source: workflow,
+					extract: regionUnit(focusClassesPattern),
+					segments: [
+						"DESIGN-TRIGGERING areas are data loss, concurrency defect, security weakness, performance degradation, and non-local logic defect. REVIEWER-ONLY areas are test-quality defect, unreadable user-facing prose, licensing exposure, consumer contract break, governing-rule defect, and unreported failure. Only a proved area adds a focus-dependent gate or area reviewer. Every proved area adds its code reviewer. Reviewer I is the explicit current exception and remains required on every track. A proved DESIGN-TRIGGERING area also requires a high-level design, user validation, focus reconfirmation, its own adversarial design reviewer, and final design approval.",
+						fact("blocking"),
+						fact("noMandatory"),
+						"A track with no proved area also has no area reviewer.",
+						fact("finalBlocking"),
+					],
+				},
+				{
+					id: "workflow-delivery",
+					where: "docs/track-workflow.md § Delivery and termination",
+					rendering: "document",
+					source: workflow,
+					extract: regionUnit(/^## Delivery and termination\n\n([\s\S]*?)(?=\n\nDone means)/gm),
+					segments: [
+						"Every completed track reaches the user through the track packet defined in [user-notes.md](user-notes.md) § Track packets.",
+						fact("blocking"),
+						fact("markerOrder"),
+						fact("noMandatory"),
+						fact("merger"),
+						fact("finalBlocking"),
+					],
+				},
+				{
+					id: "review-termination",
+					where: "docs/review-rules.md § Termination and deferred-work routing",
+					rendering: "document",
+					source: reviews,
+					extract: markedUnit("track-acceptance"),
+					segments: [
+						"A track packet can follow machine-review termination. It reports every ignored finding.",
+						fact("blocking"),
+						fact("noMandatory"),
+						fact("markerWithoutAcceptance"),
+						fact("merger"),
+						fact("finalBlocking"),
+					],
+				},
+				{
+					id: "user-notes-packet",
+					where: "docs/user-notes.md § Track packets",
+					rendering: "document",
+					source: userNotes,
+					extract: regionUnit(/^(The packet states which acceptance rule applies\.[\s\S]*?)(?=\n\n## Receiving and routing a user note)/gm),
+					segments: [
+						"The packet states which acceptance rule applies.",
+						fact("blocking"),
+						fact("markerOrder"),
+						fact("noMandatory"),
+						"Its packet reports progress and every requested decision.",
+						fact("markerWithoutAcceptance"),
+						fact("merger"),
+						fact("finalBlocking"),
+					],
+				},
+				{
+					id: "session-instructions",
+					where: "extension/mode.ts rule 8, as rendered",
+					rendering: "doctrine",
+					source: sessionDoctrine,
+					extract: regionUnit(/(Each proved\s+DESIGN-TRIGGERING area requires design,[\s\S]*?Final acceptance always blocks\.)/g),
+					segments: [
+						"Each proved DESIGN-TRIGGERING area requires design, user validation, focus reconfirmation before its adversarial design review, final design approval, and",
+						fact("blocking"),
+						fact("noMandatory"),
+						fact("finalBlocking"),
+					],
+				},
+			];
+			const unitResults = acceptanceUnits.map((unit) => {
+				const resolved = unit.extract(unit.source);
+				return { id: unit.id, where: unit.where, count: resolved.count, actual: resolved.text, expected: composeUnit(unit, ACCEPTANCE_FACTS) };
+			});
+			const unitById = new Map(unitResults.map((result) => [result.id, result]));
+			const usedFacts = new Set(acceptanceUnits.flatMap((unit) => unit.segments.filter((segment) => typeof segment !== "string").map((segment) => segment.fact)));
+			const missingRenderings = acceptanceUnits.flatMap((unit) => unit.segments.filter((segment) => typeof segment !== "string" && renderFact(ACCEPTANCE_FACTS, segment.fact, unit.rendering) === "").map((segment) => `${unit.id}:${segment.fact}`));
+			const reviewsWithoutEnd = reviews.replace("<!-- track-acceptance:end -->", "");
+			const reviewsDuplicated = `${reviews}\n\n<!-- track-acceptance:begin -->\nA second copy of the acceptance unit.\n<!-- track-acceptance:end -->\n`;
+			const workflowDuplicatedAnchor = `${workflow}\n## Focus classes and gates\n\nA second copy.\n\n<!-- focus-area-table:begin -->\n`;
+			checkAll("contract-acceptance-units", "all five acceptance-policy units resolve exactly once and equal an expectation composed from the one canonical acceptance-fact set. A unit that resolves zero or several times is a POLICY LOSS and a structural defect: a policy review must precede any re-anchoring or deletion, and a lost unit is never dropped silently", [
+				["the roster names exactly the five approved units", unitResults.map((result) => result.id).join() === "workflow-focus-classes,workflow-delivery,review-termination,user-notes-packet,session-instructions", unitResults.map((result) => result.id)],
+				["every unit resolves exactly once", unitResults.every((result) => result.count === 1), unitResults.map(({ id, where, count }) => ({ id, where, count }))],
+				["every unit equals its canonical composition", unitResults.every((result) => result.actual === result.expected), unitResults.filter((result) => result.actual !== result.expected).map(({ id, actual, expected }) => ({ id, actual, expected }))],
+				["every canonical acceptance fact is rendered by at least one unit", Object.keys(ACCEPTANCE_FACTS).every((key) => usedFacts.has(key)), Object.keys(ACCEPTANCE_FACTS).filter((key) => !usedFacts.has(key))],
+				["every rendering a unit needs exists in the canonical record", missingRenderings.length === 0, missingRenderings],
+				["a removed end marker leaves the terminal unit unresolved", markedUnit("track-acceptance")(reviewsWithoutEnd).count === 0 && markedUnit("track-acceptance")(reviewsWithoutEnd).text === "", markedUnit("track-acceptance")(reviewsWithoutEnd)],
+				["a duplicated terminal block resolves more than once", markedUnit("track-acceptance")(reviewsDuplicated).count === 2 && markedUnit("track-acceptance")(reviewsDuplicated).text === "", markedUnit("track-acceptance")(reviewsDuplicated)],
+				["a duplicated region anchor resolves more than once", regionUnit(focusClassesPattern)(workflowDuplicatedAnchor).count === 2, regionUnit(focusClassesPattern)(workflowDuplicatedAnchor).count],
+			]);
 
-When all eight conditions pass, the fast path omits the high-level design,
-adversarial design review, research log, and implementer report. Another rule
-can still require any omitted gate or artifact.
+			/**
+			 * The mutations attack the EXTRACTED text, never the expectation, so a
+			 * mutation that fails to change its unit is reported instead of quietly
+			 * agreeing with it. The benign controls prove the opposite direction: text
+			 * outside every unit, including text appended after the terminal end marker
+			 * (FG3), changes no unit.
+			 */
+			const mutateUnit = (unit, actual) => {
+				const inverted = unit.rendering === "document" ? "invertedDocument" : "invertedDoctrine";
+				const blocking = renderFact(ACCEPTANCE_FACTS, "blocking", unit.rendering);
+				const noMandatory = renderFact(ACCEPTANCE_FACTS, "noMandatory", unit.rendering);
+				const finalBlocking = renderFact(ACCEPTANCE_FACTS, "finalBlocking", unit.rendering);
+				return {
+					additiveWaiver: actual.replace(finalBlocking, `${finalBlocking.replace(/\.$/, "")}, unless the orchestrator decides to skip it.`),
+					blockingRemoved: normalizeText(actual.replace(blocking, "")),
+					blockingInverted: actual.replace(blocking, renderFact(ACCEPTANCE_FACTS, "blocking", inverted)),
+					noMandatoryInverted: actual.replace(noMandatory, renderFact(ACCEPTANCE_FACTS, "noMandatory", inverted)),
+				};
+			};
+			const staleFacts = Object.freeze({
+				...ACCEPTANCE_FACTS,
+				noMandatory: Object.freeze({
+					...ACCEPTANCE_FACTS.noMandatory,
+					document: "A track with only REVIEWER-ONLY areas has no mandatory track-acceptance gate.",
+					doctrine: "REVIEWER-ONLY tracks need no track acceptance.",
+				}),
+			});
+			const mutationResults = acceptanceUnits.map((unit) => ({
+				id: unit.id,
+				mutations: mutateUnit(unit, unitById.get(unit.id)?.actual ?? ""),
+				stale: composeUnit(unit, staleFacts),
+			}));
+			const inertMutations = mutationResults.flatMap(({ id, mutations }) => Object.entries(mutations).filter(([, text]) => text === (unitById.get(id)?.actual ?? "")).map(([name]) => `${id}:${name}`));
+			const acceptedMutations = mutationResults.flatMap(({ id, mutations }) => Object.entries(mutations).filter(([, text]) => text === (unitById.get(id)?.expected ?? "")).map(([name]) => `${id}:${name}`));
+			const staleAccepted = mutationResults.filter(({ id, stale }) => stale === (unitById.get(id)?.actual ?? "")).map(({ id }) => id);
+			const reviewsWithAppendix = `${reviews}\n\n## Appendix\n\nA later editorial note that states no acceptance policy.\n`;
+			const appendixUnit = markedUnit("track-acceptance")(reviewsWithAppendix);
+			const workflowElsewhere = workflow.replace("The track table lists names, one-line scopes, and status.", "The track table lists names and one-line scopes.");
+			const elsewhereUnits = acceptanceUnits.filter((unit) => unit.source === workflow).map((unit) => unit.extract(workflowElsewhere));
+			const doctrineElsewhere = sessionDoctrine.replace("Never read it for routine dispatching.", "Do not read it for routine dispatching.");
+			const doctrineElsewhereUnit = acceptanceUnits[4].extract(doctrineElsewhere);
+			checkAll("contract-acceptance-mutations", "every unit rejects a contradictory waiver, a removed blocking fact, an inverted blocking fact, an inverted no-acceptance fact, and a stale canonical copy. Benign text in another section, including text appended after the terminal end marker, leaves every unit exact", [
+				["every mutation really changes the text it attacks", inertMutations.length === 0, inertMutations],
+				["no mutation matches the canonical expectation", acceptedMutations.length === 0, acceptedMutations],
+				["a stale canonical copy matches no unit", staleAccepted.length === 0, { staleAccepted, staleNoMandatory: staleFacts.noMandatory.document }],
+				["an appendix after the end marker leaves the terminal unit exact", appendixUnit.count === 1 && appendixUnit.text === (unitById.get("review-termination")?.expected ?? ""), appendixUnit],
+				["an edit in another workflow section leaves both workflow units exact", workflowElsewhere !== workflow && elsewhereUnits.length === 2 && elsewhereUnits.every((resolved, index) => resolved.count === 1 && resolved.text === unitResults[index].expected), elsewhereUnits],
+				["an edit in another doctrine rule leaves the session unit exact", doctrineElsewhere !== sessionDoctrine && doctrineElsewhereUnit.count === 1 && doctrineElsewhereUnit.text === (unitById.get("session-instructions")?.expected ?? ""), doctrineElsewhereUnit],
+			]);
 
-The fast-path sequence is size prediction → risk-record planning → confirmation
-and risk-record approval → implementation → mechanical validation →
-committed-difference comparison → committed-boundary size measurement →
-mechanical checklist → track packet → blocking final acceptance → delivery.
-After boundary measurement, run all eight checklist items against the committed
-range and actual risk record. If any item fails, return to the ordinary SMALL
-workflow before packet delivery.
-
-A test-quality defect voids the fast path. Any verification or gate machinery
-also voids it. Reviewer I reviews every SMALL track. Each proved focus area adds
-its reviewer.`);
-			const widenedFastGrant = fastPath.replace("implementer report. Another", "implementer report and Reviewer I. Another");
-			const widenedFastSequence = fastPath.replace("→ delivery.", "→ delivery → undocumented shortcut.");
-			const grantMutationApplied = widenedFastGrant !== fastPath;
-			const sequenceMutationApplied = widenedFastSequence !== fastPath;
-			const reviewerRow = workflow.match(/^\| per-track \| Reviewer I \|.*$/m)?.[0] ?? "";
-			const provedAreaRow = workflow.match(/^\| per-track \| proved-area reviewers \|.*$/m)?.[0] ?? "";
-			const expectedReviewerRow = "| per-track | Reviewer I | every track | every track | every track |";
-			const expectedProvedAreaRow = "| per-track | proved-area reviewers | every proved area whose canonical gate runs per track | every proved area whose canonical gate runs per track | every proved area whose canonical gate runs per track |";
-			checkAll("contract-fast-path-artifact", "the SMALL fast path is a complete canonical artifact and widened grant or sequence mutations fail", [
-				["complete fast path is exact", normalizeText(fastPath) === expectedFastPath, normalizeText(fastPath)],
-				["widened grant mutation applied", grantMutationApplied, widenedFastGrant],
-				["widened grant fails canonical comparison", grantMutationApplied && normalizeText(widenedFastGrant) !== expectedFastPath, normalizeText(widenedFastGrant)],
-				["widened sequence mutation applied", sequenceMutationApplied, widenedFastSequence],
-				["widened sequence fails canonical comparison", sequenceMutationApplied && normalizeText(widenedFastSequence) !== expectedFastPath, normalizeText(widenedFastSequence)],
-				["eight numbered conditions", checklist.length === 8, checklist],
-				["grade table Reviewer I row is exact", reviewerRow === expectedReviewerRow, reviewerRow],
-				["grade table proved-area reviewer row is exact", provedAreaRow === expectedProvedAreaRow, provedAreaRow],
+			/**
+			 * The two Option A rules, asserted on their own. They used to ride inside the
+			 * review-rules expectation, so the terminal unit's endpoint would have taken
+			 * them out of protection (DNL20). Both now sit after the end marker and are
+			 * pinned here, independent of the unit.
+			 */
+			const escalationRule = normalizeText("Pre-existing defects, exhausted budgets, disputed stuck-fix results, blocker lowering, and regressions route through [user-notes.md](user-notes.md) § Mandatory escalation set.");
+			const deferredRule = normalizeText("Deferred work becomes a tracked issue. A project with no issue tracker records the deferral in its delivery record.");
+			const occurrencesOf = (text, fragment) => text.split(fragment).length - 1;
+			const reviewsFlat = normalizeText(reviews);
+			const endMarkerAt = reviews.indexOf("<!-- track-acceptance:end -->");
+			const acceptanceBeginAt = reviews.indexOf("<!-- track-acceptance:begin -->");
+			const reviewsWithoutUnit = normalizeText(reviews.slice(0, acceptanceBeginAt) + reviews.slice(endMarkerAt + "<!-- track-acceptance:end -->".length));
+			const droppedTarget = normalizeText(reviews.replace("Mandatory escalation set.", "the review log."));
+			checkAll("contract-escalation-routing", "mandatory escalation routing and deferred-work tracking hold as assertions of their own, after the terminal end marker and outside every acceptance unit, so neither protection depends on that unit", [
+				["escalation routing occurs exactly once", occurrencesOf(reviewsFlat, escalationRule) === 1, occurrencesOf(reviewsFlat, escalationRule)],
+				["deferred-work tracking occurs exactly once", occurrencesOf(reviewsFlat, deferredRule) === 1, occurrencesOf(reviewsFlat, deferredRule)],
+				["both rules sit after the acceptance end marker", acceptanceBeginAt >= 0 && endMarkerAt > acceptanceBeginAt && reviews.indexOf("Pre-existing defects") > endMarkerAt && reviews.indexOf("Deferred work becomes a tracked issue") > endMarkerAt, { acceptanceBeginAt, endMarkerAt, escalationAt: reviews.indexOf("Pre-existing defects"), deferredAt: reviews.indexOf("Deferred work becomes a tracked issue") }],
+				["both rules survive the removal of the whole acceptance unit", occurrencesOf(reviewsWithoutUnit, escalationRule) === 1 && occurrencesOf(reviewsWithoutUnit, deferredRule) === 1, { escalation: occurrencesOf(reviewsWithoutUnit, escalationRule), deferred: occurrencesOf(reviewsWithoutUnit, deferredRule) }],
+				["a dropped escalation target fails the assertion", droppedTarget !== reviewsFlat && occurrencesOf(droppedTarget, escalationRule) === 0, occurrencesOf(droppedTarget, escalationRule)],
 			]);
 
 			const composite = reviews.match(/^### Test-quality and structure reviewer\n([\s\S]*?)(?=^### Prose reviewer)/m)?.[1] ?? "";
@@ -4250,13 +4498,13 @@ its reviewer.`);
 				["read-only with no episode or proof", /receives no implementer episode or area proof[\s\S]*?read-only/.test(composite), composite.slice(0, 500)],
 			]);
 
-			const reviewerIClauses = reviews.match(/Reviewer I also checks exactly\nthese three clauses:\n\n([\s\S]*?)\n\n\| size grade/m)?.[1] ?? "";
+			const reviewerIClauses = reviews.match(/Reviewer I also checks exactly\nthese three clauses:\n\n([\s\S]*?)\n\n\| track/m)?.[1] ?? "";
 			const expectedReviewerIClauses = `- each in-scope failure mode and the exact signal that detects it. Missing
   detection is a finding.
 - consumer-reachable semantics, defaults, command behavior, compatibility, and
   persisted formats.
 - agreement between rule documents.`;
-			const reviewRows = [...reviews.matchAll(/^\| (SMALL|MEDIUM|LARGE) \| (.+) \|$/gm)].map((match) => [match[1], match[2]]);
+			const reviewRows = [...reviews.matchAll(/^\| every track \| (.+) \|$/gm)].map((match) => match[1]);
 			const productionCharters = reviews.match(/^### Production area charters\n([\s\S]*?)(?=^### Test-quality and structure reviewer)/m)?.[1]?.trim() ?? "";
 			const expectedProductionCharters = `- **concurrency:** interleavings, shared state, atomicity, cancellation,
   ordering, lifecycle, and deadlock.
@@ -4330,7 +4578,7 @@ The code reviewer is read-only. It reports inside this area only. Prefix \`UF\`.
 			const activePrefixPhrase = "Active built-in prefixes are `RI`, `CN`,\n`DU`, `SE`, `PF`, `TQ`, `PL`, `LX`, `NL`, `CB`, `GR`, `UF`, and `RG`.";
 			checkAll("contract-review-charters", "Reviewer I is the sole general floor, all four production defect charters and cap classes are exact and name no unavailable area, the composite test role stays separate, and retired roles and prefixes stay absent", [
 				["Reviewer I clauses are exact", normalize(reviewerIClauses) === expectedReviewerIClauses, reviewerIClauses],
-				["all grade rows use Reviewer I plus proved areas", reviewRows.length === 3 && reviewRows.every(([, text]) => text === "Reviewer I plus one reviewer for every proved area whose canonical gate runs per track"), reviewRows],
+				["the grade-free row uses Reviewer I plus proved areas", reviewRows.length === 1 && reviewRows[0] === "Reviewer I plus one reviewer for every proved area whose canonical gate runs per track", reviewRows],
 				["all four production defect reviewers are inside the production cap", /The non-local logic defect, consumer contract break, governing-rule defect and\nunreported failure reviewers are production area reviewers and count against\nthis cap\./.test(reviews), reviews.slice(0, 3000)],
 				["test, prose, and licensing are outside the production cap", /test-quality and structure reviewer, prose reviewer, and licensing\nreviewer are additional and never count against that cap/.test(reviews), reviews.slice(0, 2500)],
 				["composite test role never merges with another built-in role", /test-quality and structure reviewer never merges with\nReviewer I, a production area reviewer, the prose reviewer, or the licensing\nreviewer\./.test(reviews), reviews.slice(0, 2500)],
@@ -4347,23 +4595,23 @@ The code reviewer is read-only. It reports inside this area only. Prefix \`UF\`.
 			const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 			const headingCount = (source, name) => (source.match(new RegExp(`^## ${escapeRegex(name)}$`, "gm")) ?? []).length;
 			const targetDocs = [
-				["track-workflow.md", workflow, ["Lifecycle and phases", "Size script", "Confirmation gate", "Risk planning and reconciliation", "Fast path", "Track packet shape", "Track intention block and implementer response", "Session handoff and the research log", "Resume order and reconciliation", "Review coverage", "Delivery and termination", "Migration", "Layering richer workflows on top"]],
+				["track-workflow.md", workflow, ["Lifecycle and phases", "Focus classes and gates", "Confirmation gate", "Risk planning and reconciliation", "Track intention block and implementer response", "Session handoff and the research log", "Resume order and reconciliation", "Review coverage", "Delivery and termination", "Migration", "Layering richer workflows on top"]],
 				["review-rules.md", reviews, ["Reviewer sets, merge rule and charters", "Findings and output", "Reviewer evidence standards", "Observation files and evidence recovery", "Fix loop and gate verdicts", "Stuck-fix consultation", "Termination and deferred-work routing"]],
-				["blast-radius.md", blast, ["Two independent axes", "Size measurement and the exclusion list", "Track function and track constraints", "Focus areas and their gates", "Optional path declarations", "Lifecycle rules owned by the spine", "Halt, re-derivation and grade correction", "Review coverage and the coverage register", "Commit discipline for drift and boundaries"]],
+				["blast-radius.md", blast, ["Focus states and track constraints", "Focus areas and their gates", "Optional path declarations", "Lifecycle rules owned by the spine", "Halt and focus re-derivation", "Review coverage and the coverage register", "Commit discipline for drift and boundaries"]],
 				["user-notes.md", userNotes, ["Track packets", "Receiving and routing a user note", "Note queue and drain", "Override log", "Register entry shape", "Mandatory escalation set", "User note accounting", "Final report"]],
 				["pr-publishing.md", publishing, ["Creation", "Description rules", "Tracks table", "Keeping the PR in sync", "Ready-for-review flip", "After the flip", "After the merge"]],
 			];
 			const headingDefects = targetDocs.flatMap(([file, source, names]) => names.flatMap((name) => headingCount(source, name) === 1 ? [] : [`${file} § ${name} → ${headingCount(source, name)}`]));
-			const duplicatedFastPath = `${workflow}\n## Fast path\nContradictory duplicate.\n`;
-			const metacharHeading = "Fast path (SMALL) [gate]";
+			const duplicatedFocus = `${workflow}\n## Focus classes and gates\nContradictory duplicate.\n`;
+			const metacharHeading = "Focus classes (proved) [gate]";
 			const metacharSource = `## ${metacharHeading}\n`;
 			const defectiveHeadingCount = (source, name) => (source.match(new RegExp(`^## ${name}$`, "gm")) ?? []).length;
 			checkAll("contract-section-targets", "every named level-two target across all five workflow documents exists exactly once, and duplicate headings fail the predicate", [
 				["all named targets are unique", headingDefects.length === 0, headingDefects],
-				["regex escaping handles metacharacters", escapeRegex(metacharHeading) === "Fast path \\(SMALL\\) \\[gate\\]", escapeRegex(metacharHeading)],
+				["regex escaping handles metacharacters", escapeRegex(metacharHeading) === "Focus classes \\(proved\\) \\[gate\\]", escapeRegex(metacharHeading)],
 				["escaped fabricated heading matches exactly once", headingCount(metacharSource, metacharHeading) === 1, headingCount(metacharSource, metacharHeading)],
 				["unescaped counterfactual differs", defectiveHeadingCount(metacharSource, metacharHeading) !== 1, defectiveHeadingCount(metacharSource, metacharHeading)],
-				["duplicated Fast path counterfactual fails uniqueness", headingCount(duplicatedFastPath, "Fast path") === 2 && headingCount(duplicatedFastPath, "Fast path") !== 1, headingCount(duplicatedFastPath, "Fast path")],
+				["duplicated focus-gates counterfactual fails uniqueness", headingCount(duplicatedFocus, "Focus classes and gates") === 2 && headingCount(duplicatedFocus, "Focus classes and gates") !== 1, headingCount(duplicatedFocus, "Focus classes and gates")],
 			]);
 		});
 

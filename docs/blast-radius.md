@@ -1,200 +1,31 @@
-# Blast radius, size and review coverage
+# Blast radius and review coverage
 
-This document defines the measured size axis and the judged focus axis. It
-also defines decomposition constraints, review coverage, drift control and
-commit discipline that depends on drift. [track-workflow.md](track-workflow.md)
+This document defines the judged focus model. It also defines track constraints,
+review coverage, drift control, and commit discipline. [track-workflow.md](track-workflow.md)
 is the lifecycle spine. [review-rules.md](review-rules.md) defines reviewer
 composition and finding handling.
 
-## Two independent axes
+## Focus states and track constraints
 
-**Size is predicted, then measured.** Before a committed diff exists, the
-orchestrator predicts changed production-logic lines, files touched and the
-initial grade. The prediction states its basis and uncertainty. The script
-verifies the real committed range at the first track boundary. It never claims
-to measure absent work.
+The orchestrator judges all eleven focus areas for the change and independently
+for every track. An area is **NAMED** when the orchestrator submits its
+four-part proof. The proof states the defect class, the place where the defect
+can occur, the material consequence, and the review contribution. User approval
+makes a NAMED area **proved**.
+User rejection makes it **SKIPPED**. Only a proved area adds focus-dependent
+gates or area reviewers. Reviewer I is the explicit current exception and runs
+on every track. The user alone judges proofs and whether the proposal is the
+simplest solution. No script or other rule decides whether a proof holds.
 
-**Focus is planned and proved.** The orchestrator judges engagement for the
-whole planned track. It records all eleven areas and gives a concrete proof for
-each named area. The user approves this risk record. Before review, the
-orchestrator compares the proved set with the committed difference. No script
-or rule decides whether a proof holds.
-
-The axes never substitute for each other. Size carries no risk meaning. A
-focus area never changes a measured count.
-
-Resolve size uncertainty by taking the higher grade. The user may confirm a
-lower grade only before implementation starts. The confirmation record states
-the reason.
-
-The grade may not shrink after implementation starts. The committed-difference
-comparison may add a proved area with its reviewer. It may drop a proved area
-that no longer engages.
-
-## Size measurement and the exclusion list
-
-Run the shipped size command against the two refs that bound the change:
-
-```bash
-node <package>/extension/size-grade.mjs --base <ref> --head <ref>
-```
-
-`<package>` is the absolute package root that contains this document. Slate
-exports that command path as `SIZE_GRADE_SCRIPT`. Run it from any working
-directory inside the target Git repository. The command resolves the project
-root for `.pi/size-grade.json`. Both refs are required.
-
-The default format is JSON. `--format json` selects it explicitly. The result
-object has these fields:
-
-| field | type and meaning |
-| --- | --- |
-| `base` | string containing the supplied base ref |
-| `head` | string containing the supplied head ref |
-| `changedProductionLogicLines` | number of added plus deleted source lines |
-| `changedFiles` | number of numstat records |
-| `sizeGrade` | `SMALL`, `MEDIUM` or `LARGE` |
-| `files` | array containing one object per numstat record |
-
-Every object in `files` has these fields:
-
-| field | type and meaning |
-| --- | --- |
-| `path` | string containing the path from numstat |
-| `added` | number of added lines, or zero for a binary record |
-| `deleted` | number of deleted lines, or zero for a binary record |
-| `changedLines` | number equal to `added + deleted` |
-| `binary` | boolean that identifies a binary numstat record |
-| `kind` | `generated`, `test`, `documentation`, `build`, `configuration`, `source` or `other` |
-| `excluded` | boolean that is true unless `kind` is `source` |
-| `reason` | string containing the classifier's reason |
-
-`--format text` prints three summary lines for grade, production-logic lines
-and changed files. It then prints one line per record. Each record line states
-`INCLUDED` or `EXCLUDED`, the sanitized path, the classifier reason and the
-changed-line count.
-
-Success and `--help` exit with status 0. An argument, configuration, Git or
-input-limit error exits with status 1 and writes a `size-grade:` diagnostic to
-standard error. Git output and `.pi/size-grade.json` are each limited to
-1,048,576 bytes.
-
-During initial assessment, predict both counts and state the evidence. A
-committed candidate may inform that prediction but never mechanically sets it.
-Run the command on the real committed range at the first track boundary. That
-mandatory boundary run verifies the prediction against implemented work.
-
-### Canonical counting and exclusion rules
-
-This section is the only normative statement of the counting and exclusion
-rules. Other documents must point here instead of restating them.
-
-The command uses `git diff --no-renames --numstat`. It adds each source file's
-added-line count and deleted-line count. Only files classified as `source`
-contribute to the production-logic line total. The excluded kinds are `test`,
-`generated`, `documentation`, `build`, `configuration` and `other`.
-
-The shipped command is the authority for the exact extension, filename and
-directory tables used by classification. This document does not duplicate
-those tables. The classifier applies this order and stops at the first match:
-
-1. generated, including configured generated markers and lockfile names.
-2. test.
-3. documentation.
-4. build.
-5. configuration.
-6. source.
-7. other.
-
-Every numstat record counts as one changed file, including an excluded file, a
-binary file and a file with no changed lines. Binary and zero-line records add
-zero lines. Exclusion affects only the production-logic line total.
-
-Rename detection is off. A rename therefore appears as one deletion record
-and one addition record. It counts as two changed files, and its added and
-deleted lines contribute when the paths classify as source. This rule matches
-the corpus that produced the thresholds, which hold only when the live count
-uses the corpus method.
-
-A large mechanical rename can therefore reach a higher grade than its risk
-deserves. [Two independent axes](#two-independent-axes) lets the user confirm a
-lower grade before implementation starts. The confirmation record states the
-reason.
-
-### Project classification overrides
-
-The command optionally reads `.pi/size-grade.json` from the project root. A
-missing file uses all built-in defaults. The file accepts only these keys:
-
-- `testPaths`: case-insensitive regular-expression strings for test paths.
-- `generatedMarkers`: case-insensitive regular-expression strings for
-  generated paths.
-- `lockfiles`: case-insensitive lockfile names.
-
-A missing key uses that key's built-in default. A present key replaces its
-default with an array of non-empty strings. The built-in defaults are:
-
-```json
-{
-  "testPaths": [
-    "(^|/)(test|tests|testing|test-commons|docker-tests)/",
-    "(^|/)(?:[^/]*[-_.])?(test|tests|spec)([-_.]|$)",
-    "(^|/)[^/]*(test|tests|spec)\\.[^.]+$"
-  ],
-  "generatedMarkers": [
-    "(^|/)(target|build|dist|generated|coverage|node_modules|vendor)/",
-    "\\.min\\.(js|css)$"
-  ],
-  "lockfiles": [
-    "package-lock.json",
-    "yarn.lock",
-    "pnpm-lock.yaml"
-  ]
-}
-```
-
-### Size grades
-
-Apply these line-count bands first:
-
-| size grade | changed production-logic lines |
-| --- | ---: |
-| SMALL | 0–50 |
-| MEDIUM | 51–1,000 |
-| LARGE | more than 1,000 |
-
-A files-touched count above 25 then raises the grade by one step. The raise is
-mandatory. SMALL becomes MEDIUM, and MEDIUM becomes LARGE. LARGE remains
-LARGE. No count lowers a grade.
-
-## Track function and track constraints
-
-The track function returns a floor, not an exact track count. For `F` files
-touched and `L` changed production-logic lines, calculate:
-
-```text
-file-derived count = ceil((F - 5) / 20)
-line-derived count = ceil(L / 1000)
-track floor = max(1, file-derived count, line-derived count)
-```
-
-The orchestrator may create more tracks than the floor for atomicity or
-coherence. It records the reason. The orchestrator owns the split.
-
-A track may not exceed 1,000 changed production-logic lines. Atomicity is the
-only exception. A range that must land whole because several surfaces must
-agree at one boundary may exceed the maximum. Measure the real range and
-record both the overrun and the reason. Reject a split that would leave an
-inconsistent intermediate state.
-
-When the track floor exceeds twelve, stop and present the split plan to the
-user. The user chooses whether and how the change proceeds. Twelve is an
-escalation threshold, not a hard track cap.
+Each track must be one coherent unit that a human can review in one sitting. The
+orchestrator owns the split and records its rationale. Reject a split that would
+leave an inconsistent intermediate state. When the planned split exceeds twelve
+tracks, stop and present it to the user. The user chooses whether and how the
+change proceeds. Twelve is an escalation threshold, not a hard track cap.
 
 ## Focus areas and their gates
 
-A focus area is one named risk. An area adds its reviewer only when the track
-record contains a judged proof that holds.
+A focus area is one named risk. An area adds its reviewer only when the user approves its NAMED proof.
 
 <!-- focus-area-table:begin -->
 | # | focus area | the gate it adds | where the gate runs |
@@ -214,7 +45,9 @@ record contains a judged proof that holds.
 
 The marked table is the canonical copy of the duplicated eleven-area table. Its
 second copy is in [track-workflow.md](track-workflow.md). The two marked blocks
-must remain equal.
+must remain equal. The canonical class list is in
+[track-workflow.md](track-workflow.md) § Focus classes and gates. It defines
+which areas are DESIGN-TRIGGERING and which are REVIEWER-ONLY.
 
 Duplicated doctrine blocks follow the reviewer-charter marker convention. An
 HTML begin comment immediately precedes each block. Its matching end comment
@@ -341,10 +174,12 @@ both outcomes. A complete mechanical rename remains excluded when every site is
 shown and can be checked alone. An incomplete rename can engage when the missing
 site owes a matching edit.
 
-A proof for this area keeps the standard three parts. The defect class is the
+A proof for this area keeps the standard four parts. The defect class is the
 shared relation that can fail. The standard place field lists the changed place
 and every other place that must satisfy that relation. The consequence is the
-forbidden or missing result.
+forbidden or missing result. The review contribution names what the area
+reviewer can trace between those places, the evidence it reads there, and why
+the planned checks cannot settle the relation.
 
 - **Concurrency defect.** An unsatisfied agreement that appears only because two
   or more executions may overlap or may run in another order belongs to
@@ -399,7 +234,7 @@ A consumer contract break changes a surface that an unchanged consumer reaches.
 
 The first three answers must all be yes, or the fourth answer can be yes on its own. The review base is the base endpoint of the declared review range. The candidate is the candidate endpoint of that range. Compare those two snapshots, including unreleased code. A version number, release label, changelog or publication state does not override the declared endpoints. A consumer-reachable surface is a name that a published entry point exports, an argument or option of a shipped command, an exit status of a shipped command, the machine-readable output of a shipped command, a configuration key together with the value used when it is absent, a record or file that the project writes and later reads, or a shipped statement about what the project accepts or produces. An internal name, a moved file or a helper that no published entry point exposes does not trigger the area. An addition that leaves every permitted base use unchanged does not trigger it. Human-readable wording, layout and log text do not trigger it. A file that the project may discard or rebuild without a consumer noticing does not trigger it. Version numbers, release labels, changelogs and counts neither trigger nor clear it. A defect correction triggers it when an unchanged consumer's result changes, even when the base result contradicted the published document. A surface introduced in the candidate, which no consumer can reach from the review base, triggers it only through the fourth question.
 
-A proof for this area keeps the standard three parts. The defect class is the kind of break: a withdrawn name, a changed default, a changed exit status, a changed output shape, a narrowed input, or a format that the base reader cannot read in the candidate. The place names the consumer-reachable surface and the compared revisions in the declared review range, together with the concrete export, option, key, exit status or record. The consequence is what the unchanged consumer experiences in the candidate: a failed run, a silently different result, or data that it can no longer read.
+A proof for this area keeps the standard four parts. The defect class is the kind of break: a withdrawn name, a changed default, a changed exit status, a changed output shape, a narrowed input, or a format that the base reader cannot read in the candidate. The place names the consumer-reachable surface and the compared revisions in the declared review range, together with the concrete export, option, key, exit status or record. The consequence is what the unchanged consumer experiences in the candidate: a failed run, a silently different result, or data that it can no longer read. The review contribution names what the area reviewer can compare across the declared review range, the surface evidence it reads, and why the planned checks cannot show the unchanged consumer's experience.
 
 #### Boundaries
 
@@ -427,7 +262,7 @@ A governing-rule defect makes a rule for project work unusable or inconsistent.
 
 The change must add, alter or remove a rule for people or agents who produce, review, verify, publish or release work, or alter the machinery that enforces it. A product contract is outside this trigger. A change that only obeys an existing rule does not trigger the area. Counts and readability or coverage scores neither trigger nor clear it. A wording change that leaves every obligation the same does not trigger it. A record of a past rule that no reader must follow today does not trigger it.
 
-A proof for this area keeps the standard three parts. The defect class is which of the five questions answers yes. The place is the changed rule together with the other rule, copy or enforcing check that must agree with it. The consequence is the work that then proceeds without its check, or the two conflicting ways in which two readers act.
+A proof for this area keeps the standard four parts. The defect class is which of the five questions answers yes. The place is the changed rule together with the other rule, copy or enforcing check that must agree with it. The consequence is the work that then proceeds without its check, or the two conflicting ways in which two readers act. The review contribution names what the area reviewer can compare between the rule, its other copies and its enforcing check, and why the planned checks cannot show that disagreement.
 
 ---
 
@@ -454,7 +289,7 @@ An unreported failure leaves a product failure with no signal.
 
 A signal is one observable event, for example a non-zero exit status, a message on the error stream, a rejected input with a stated reason, a failing check, a recorded event or an error handed to a caller. A dropped entry with no report, an error that is caught and discarded, a return status that no caller reads, a write that nothing verifies and a fallback that replaces a failure with a normal-looking result each trigger the area. A change that adds no new way to fail does not trigger it. A failure that reaches a reporter the change keeps and shows does not trigger it. A wrong value from an execution that met no failure does not trigger it. A change whose only affected artifact is a project test or check belongs to test-quality defect and does not trigger this area. A removed signal triggers the area unless the change shows that the failure it reported can no longer happen. Counts do not decide the result.
 
-A proof for this area keeps the standard three parts. The defect class is the failure mode that carries no signal. The place is the failure site together with the boundary that owes the report. The consequence is what proceeds, spreads or completes as an apparent success while the failure stays unknown.
+A proof for this area keeps the standard four parts. The defect class is the failure mode that carries no signal. The place is the failure site together with the boundary that owes the report. The consequence is what proceeds, spreads or completes as an apparent success while the failure stays unknown. The review contribution names the failure path the area reviewer can drive or inspect, the signal evidence it looks for, and why the planned checks cannot show the missing report.
 
 #### Boundaries
 
@@ -463,9 +298,26 @@ Areas may engage together when each area meets its own trigger. The unreported f
 ### Judged proof and risk record
 
 The orchestrator records one line for every area. A named line gives a concrete
-three-part proof. The proof states the defect class, the place in the planned
-change where it can occur, and the consequence. A non-engagement line states
-which part of the trigger answers no.
+four-part proof. A line that is not NAMED states which part of the trigger
+answers no. A NAMED line becomes proved only through user approval. A rejected
+NAMED line becomes SKIPPED and adds no gate or reviewer.
+
+Every NAMED proof has these four parts:
+
+1. **Defect class.** State the kind of defect that the area covers.
+2. **Place.** State the place in the planned change where it can occur.
+3. **Material consequence.** State the consequence of omitting the area
+   reviewer.
+4. **Review contribution.** Identify a concrete review action that can
+   materially reduce the stated risk. Name the evidence the specialized reviewer
+   can examine or obtain. Explain how that action could expose the defect or a
+   missing safeguard before acceptance. Explain why ordinary implementation and
+   its planned checks are insufficient for this risk.
+
+Planned checks means the implementation validation and test commands. It
+excludes every separate reviewer, including Reviewer I. The review contribution
+promises no guaranteed detection. It makes no comparison with another reviewer.
+A short method and a configuration change receive no automatic exemption.
 
 The proof basis is the approved track design. When the track has no design, the
 basis is the track intention block and planned file list. The risk record is
@@ -479,12 +331,10 @@ material when loss of that control would be material. A cosmetic consequence
 is not material. A proof is not convincing when its words would also fit a
 change that does not engage the area.
 
-No rule mechanically decides whether a proof holds. The adversarial design
-review judges the whole record when that review runs. The user judges the whole
-record at every confirmation gate. An area whose proof convinces neither reader
-is skipped. A skipped area gets no reviewer. The skip is recorded and is not an
-escalation. A track with no proved area still gets Reviewer I and every gate its
-grade requires.
+No rule mechanically decides whether a proof holds. The user alone judges every
+proof at the confirmation gate and at focus reconfirmation. A SKIPPED area gets
+no gate or reviewer. The skip is recorded and is not an escalation. A track with
+no proved area still gets Reviewer I.
 
 Reviewer composition and merging belong to
 [review-rules.md](review-rules.md) § Reviewer sets, merge rule and charters.
@@ -505,38 +355,43 @@ A path is evidence, not a definition or a decision.
 ## Lifecycle rules owned by the spine
 
 [track-workflow.md](track-workflow.md) § Risk planning and reconciliation owns
-planning, approval, and the committed-difference comparison. Its § Fast path owns fast
-path eligibility, the omitted gates, retained sequence, mechanical checklist,
-every voiding condition and the verification-machinery exclusion. This document
-does not duplicate those rules.
+planning, approval, focus reconfirmation, the late-area route, and the
+committed-difference comparison. This document does not duplicate those rules.
 
 [review-rules.md](review-rules.md) § Reviewer sets, merge rule and charters owns
 Reviewer I and all area-reviewer composition.
 
-## Halt, re-derivation and grade correction
+## Halt and focus re-derivation
 
 An implementer halts for an unplanned sensitive configuration change, before
-weakening a test, or before materially deviating from the approved design. The
-halt occurs before further work builds on the new fact.
+weakening a test, before materially deviating from the approved design, or when
+it finds an area the plan did not name. The halt occurs before further work
+builds on the new fact.
 
 On a halt, the orchestrator:
 
 1. pauses implementation.
-2. re-runs the size command and re-derives the grade upward only.
-3. returns to the user confirmation gate when the grade rose.
-4. resumes only after the blocking re-confirmation passes.
+2. re-derives all eleven focus lines for the remaining work.
+3. presents each addition or proposed removal with its proof or failed trigger
+   part.
+4. obtains the user's approval or rejection of every new NAMED proof and every
+   proposed removal of a proved area. A rejected removal preserves the proved
+   area and all of its gates and reviewers.
+5. runs the required design gate for remaining work when a newly proved
+   DESIGN-TRIGGERING area requires it, unless the user records a decision to
+   skip that gate.
+6. resumes only after every blocking gate passes.
 
-A first-boundary measurement above the confirmed band fires this halt
-immediately. Present the measured counts at re-confirmation. A measurement
-below the confirmed band does not lower the grade. The route for confirming a
-lower grade closes when implementation starts.
-
-A halt may never lower the grade after implementation has started.
+The route never applies a design gate retrospectively to completed work. It
+keeps the recorded skip and every reviewer that already covered completed work.
+A late proved area adds its reviewer to the completed range. The track packet
+and final acceptance report the resulting coverage.
 
 ## Review coverage and the coverage register
 
 Every part of a track range must reach Reviewer I and the perspectives that the
-proved areas of that track require. User review never replaces machine review.
+proved areas of that track require. Required user acceptance never replaces
+machine review.
 This requirement is the coverage invariant.
 
 Create a coverage register when a user-review fix commit exists. Record each
