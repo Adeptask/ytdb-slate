@@ -153,7 +153,7 @@ test("routing doctrine distinguishes unknown tiers from unsourced cost classes",
 });
 
 test("experimental profile guidance retains its reviewed meaning in the routing doctrine", { timeout: 5000 }, async () => {
-  const profiles = MODEL_PROFILES.filter((profile) => profile.id.startsWith("claude-bridge/") || profile.id.startsWith("openai-codex/"));
+  const profiles = MODEL_PROFILES.filter((profile) => profile.tier === null);
   const candidates = profiles.map(candidateForProfile);
   const doctrine = await renderDoctrine({
     on: true,
@@ -162,7 +162,7 @@ test("experimental profile guidance retains its reviewed meaning in the routing 
     cheapestNonPreferred: true,
     warnings: [],
   });
-  assert.equal(profiles.length, 8);
+  assert.equal(profiles.length, 5);
   for (const profile of profiles) {
     assert.equal(profile.routeFor, "synthetic non-sensitive experiments; explicit routing preferred", profile.id);
     assert.equal(profile.avoidFor, "avoid review, gate, sensitive, or production work; advice is not enforced", profile.id);

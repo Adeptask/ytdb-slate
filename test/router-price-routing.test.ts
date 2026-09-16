@@ -120,11 +120,31 @@ const EXPERIMENTAL_LADDERS: Readonly<Record<string, readonly ThinkingLevel[]>> =
   "claude-bridge/claude-opus-5": ["minimal", "low", "medium", "high", "xhigh", "max"],
   "openai-codex/gpt-5.3-codex-spark": ["off", "minimal", "low", "medium", "high", "xhigh"],
   "openai-codex/gpt-5.5": ["off", "minimal", "low", "medium", "high", "xhigh"],
-  "openai-codex/gpt-5.6-luna": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
-  "openai-codex/gpt-5.6-sol": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
-  "openai-codex/gpt-5.6-terra": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
   "openai-codex/gpt-6-astra": ["minimal", "low", "medium", "high", "xhigh", "max"],
 };
+
+test("every OpenAI profile has an equivalent Codex profile with independent lookup", () => {
+  for (const original of MODEL_PROFILES.filter((p) => p.id.startsWith("openai/"))) {
+    const id = original.id.replace("openai/", "openai-codex/");
+    const copy = findProfile(id);
+    assert.ok(copy, id);
+    assert.equal(MODEL_PROFILES.filter((p) => p.id === id).length, 1);
+    assert.deepEqual({ ...copy, id: original.id, aliases: original.aliases }, original);
+    assert.deepEqual(ladderFor(copy), ladderFor(original));
+    assert.deepEqual(copy.aliases, original.aliases.filter((alias) => alias.startsWith("openai/"))
+      .map((alias) => alias.replace("openai/", "openai-codex/")));
+    for (const alias of copy.aliases) assert.equal(findProfile(alias), copy);
+    for (const alias of original.aliases) assert.equal(findProfile(alias), original);
+    const resolved = resolveModelRouter({
+      models: [original.id, id],
+      registry: { find: () => ({ contextWindow: 1050000 }), hasConfiguredAuth: () => true },
+    });
+    assert.equal(resolved.candidates.length, 2);
+    for (const level of ALL_THINKING_LEVELS) {
+      assert.equal(checkEffort(resolved, id, level).verdict, checkEffort(resolved, original.id, level).verdict);
+    }
+  }
+});
 
 test("experimental provider profiles remain distinct and pass real router and effort guards", () => {
   const experimental = Object.keys(EXPERIMENTAL_LADDERS);
@@ -207,9 +227,9 @@ test("experimental provider profiles remain distinct and pass real router and ef
   assert.equal(dropped.candidates.some((candidate) => candidate.spec === unauthorized), false);
   assert.equal(droppedWarnings.some((warning) => warning.includes("not in pi's model registry")), true);
   assert.equal(droppedWarnings.some((warning) => warning.includes("no usable credentials configured")), true);
-  assert.equal(MODEL_PROFILES.filter((p) => experimental.includes(p.id)).length, 8);
+  assert.equal(MODEL_PROFILES.filter((p) => experimental.includes(p.id)).length, 5);
 
-  const onlySpec = "openai-codex/gpt-5.6-sol";
+  const onlySpec = "claude-bridge/claude-sonnet-5";
   const onlyProfile = findProfile(onlySpec);
   assert.ok(onlyProfile);
   const onlyWarnings: string[] = [];

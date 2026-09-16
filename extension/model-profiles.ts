@@ -348,9 +348,6 @@ const EXPERIMENTAL_PROFILES = [
 	// Pi 0.85.1 registers these through the openai-codex-responses provider.
 	experimentalProfile("openai-codex/gpt-5.3-codex-spark", NO_MAX_LADDER),
 	experimentalProfile("openai-codex/gpt-5.5", NO_MAX_LADDER),
-	experimentalProfile("openai-codex/gpt-5.6-luna", FULL_LADDER),
-	experimentalProfile("openai-codex/gpt-5.6-sol", FULL_LADDER),
-	experimentalProfile("openai-codex/gpt-5.6-terra", FULL_LADDER),
 	experimentalProfile("openai-codex/gpt-6-astra", NO_OFF_LADDER),
 ];
 
@@ -942,10 +939,20 @@ const PROFILES: ModelProfile[] = [
 	...EXPERIMENTAL_PROFILES,
 ];
 
+// Derived provider copies: reuse the OpenAI routing configuration by explicit policy.
+// These copies do not represent separate research on the Codex provider surface.
+// Bare aliases remain owned by OpenAI to keep lookup unambiguous.
+PROFILES.push(...PROFILES.filter((profile) => profile.id.startsWith("openai/")).map((profile) => ({
+	...profile,
+	id: profile.id.replace("openai/", "openai-codex/"),
+	aliases: profile.aliases.filter((alias) => alias.startsWith("openai/"))
+		.map((alias) => alias.replace("openai/", "openai-codex/")),
+})));
+
 /**
  * Static routing profiles in Artifact B row order — ascending tier, with
  * terra's unranked `t?` sitting in its price position — followed by the
- * out-of-scope §E cheap tier.
+ * out-of-scope §E cheap tier, experimental profiles, and derived Codex copies.
  */
 export const MODEL_PROFILES: readonly ModelProfile[] = deepFreeze(PROFILES);
 
@@ -987,7 +994,7 @@ export function findProfile(spec: string): ModelProfile | undefined {
  * ladder belongs — the accessor's contract broken by the table's own prototype.
  * Map.get answers only for keys actually inserted.
  */
-const LADDER_BY_ID: ReadonlyMap<string, readonly ThinkingLevel[]> = new Map<string, readonly ThinkingLevel[]>([
+const LADDER_BY_ID: Map<string, readonly ThinkingLevel[]> = new Map<string, readonly ThinkingLevel[]>([
 	["openai/gpt-5.6-sol", OPENAI_GPT_5_LADDER],
 	["openai/gpt-5.6-terra", OPENAI_GPT_5_LADDER],
 	["openai/gpt-5.6-luna", OPENAI_GPT_5_LADDER],
@@ -1004,11 +1011,13 @@ const LADDER_BY_ID: ReadonlyMap<string, readonly ThinkingLevel[]> = new Map<stri
 	["claude-bridge/claude-opus-5", NO_OFF_LADDER],
 	["openai-codex/gpt-5.3-codex-spark", NO_MAX_LADDER],
 	["openai-codex/gpt-5.5", NO_MAX_LADDER],
-	["openai-codex/gpt-5.6-luna", FULL_LADDER],
-	["openai-codex/gpt-5.6-sol", FULL_LADDER],
-	["openai-codex/gpt-5.6-terra", FULL_LADDER],
 	["openai-codex/gpt-6-astra", NO_OFF_LADDER],
 ]);
+
+// Derived copies use exactly the same effort policy as their OpenAI originals.
+for (const [id, ladder] of [...LADDER_BY_ID]) {
+	if (id.startsWith("openai/")) LADDER_BY_ID.set(id.replace("openai/", "openai-codex/"), ladder);
+}
 
 /**
  * The pi thinking-level ladder a model actually supports (digest §V). Every

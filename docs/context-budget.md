@@ -215,10 +215,10 @@ must agree with `verification/README.md`:
 | on | fixed six-model fixture | off | set | 5 | 6,647 | 93 |
 | on | fixed six-model fixture | on | absent | 6 | 6,666 | 93 |
 | on | fixed six-model fixture | on | set | 6 | 6,666 | 93 |
-| on | all 17 shipped | off | absent | 5 | 8,712 | 104 |
-| on | all 17 shipped | off | set | 5 | 8,712 | 104 |
-| on | all 17 shipped | on | absent | 6 | 8,731 | 104 |
-| on | all 17 shipped | on | set | 6 | 8,731 | 104 |
+| on | all 19 shipped | off | absent | 5 | 9,004 | 106 |
+| on | all 19 shipped | off | set | 5 | 9,004 | 106 |
+| on | all 19 shipped | on | absent | 6 | 9,023 | 106 |
+| on | all 19 shipped | on | set | 6 | 9,023 | 106 |
 
 An untrusted project receives no writing or routing tail whatever its
 `slate.json` says. Its fixed doctrine remains 2,708 portable characters, 43
@@ -232,11 +232,11 @@ Two parts of the block grow with configuration rather than with the
 path:
 
 - The routing rule is a live table with ONE ROW PER ROUTABLE MODEL,
-  so what renders is the models you CONFIGURE — not the seventeen Slate
+  so what renders is the models you CONFIGURE — not the nineteen Slate
   ships profiles for. In this snapshot it is 2,030 portable
   characters and adds 21 doctrine lines for six configured models;
-  for all seventeen it is 4,095 characters and adds 32 lines. The six
-  model rows are 146–181 characters. All seventeen are 146–183. The
+  for all nineteen it is 4,387 characters and adds 34 lines. The six
+  model rows are 146–181 characters. All nineteen are 146–183. The
   legend adds a one-off clause per marker it has to explain, so
   growth is not only the sum of new rows.
 - The worker-extension rule grows per whitelisted extension and per
@@ -250,8 +250,8 @@ worker extensions and support verification decisions:
 | basis | models | worker extensions | paths | portable | lines | rough tokens |
 | --- | ---: | --- | ---: | ---: | ---: | ---: |
 | fixture mirroring current `.pi/slate.json`: draft PRs + writing, pi-registry windows | 5 resolved | pinned-package 2 units / 4 tools | 6 | 7,424 | 102 | ≈1,856 |
-| stable maximal fixture | 17 | synthetic 2 units / 4 tools, every rendered field at its cap | 6 | 10,078 | 114 | ≈2,520 |
-| deferred-issue maximal fixture | 17 | synthetic 2 units / 4 tools, every rendered field at its cap | 6 | 10,152 | 115 | ≈2,538 |
+| stable maximal fixture | 19 | synthetic 2 units / 4 tools, every rendered field at its cap | 6 | 10,370 | 116 | ≈2,593 |
+| deferred-issue maximal fixture | 19 | synthetic 2 units / 4 tools, every rendered field at its cap | 6 | 10,444 | 117 | ≈2,611 |
 
 The dogfood fixture mirrors `workflow.draftPRs: true`, both ignored writing keys,
 and the five models in this repository's `.pi/slate.json`. A change to that
@@ -264,7 +264,7 @@ units and four tools. Their worker-extension rule is 916 portable characters /
 11 lines. Raw size remains symbolic: `portable + 6 × length(installed docs
 directory)`. No maintainer checkout path belongs in this shipped document.
 
-The stable maximal row uses all seventeen shipped profiles, draft PRs, and writing.
+The stable maximal row uses all nineteen shipped profiles, draft PRs, and writing.
 The deferred-issue row uses the same basis with `workflow.followUpIssues: true`.
 Its direct post-resolution worker fixture has two units and four tools. Unit
 labels are 128 characters. Tool names are 64 characters. Descriptions are 140
@@ -295,18 +295,18 @@ applies the five-percent rule to every upper bound, so this decision is auditabl
 
 | budget term | current | enforced bound | current reserve |
 | --- | ---: | ---: | ---: |
-| routing rule characters | 4,095 | 4,300 | 205 |
-| routing rule lines | 33 | 35 | 2 |
+| routing rule characters | 4,387 | 4,700 | 313 |
+| routing rule lines | 35 | 37 | 2 |
 | routing fixed prose | 1,133 | 1,500 | 367 |
 | largest model row | 183 | 300 | 117 |
-| trusted router-on doctrine | 8,712 | 9,200 | 488 |
+| trusted router-on doctrine | 9,004 | 9,500 | 496 |
 | writing and design doctrine | 4,617 | 5,600 | 983 |
-| writing plus router | 8,712 | 9,200 | 488 |
+| writing plus router | 9,004 | 9,500 | 496 |
 | writing plus extensions | 4,872 | 6,000 | 1,128 |
-| writing plus router and extensions | 8,967 | 9,500 | 533 |
-| maximal doctrine, draft PRs enabled | 10,078 | 10,700 | 622 |
-| maximal doctrine, draft PRs disabled | 10,059 | 10,700 | 641 |
-| maximal doctrine, deferred-issue prompt enabled | 10,152 | 10,700 | 548 |
+| writing plus router and extensions | 9,259 | 9,800 | 541 |
+| maximal doctrine, draft PRs enabled | 10,370 | 11,000 | 630 |
+| maximal doctrine, draft PRs disabled | 10,351 | 11,000 | 649 |
+| maximal doctrine, deferred-issue prompt enabled | 10,444 | 11,000 | 556 |
 | capped worker rule | 1,347 | 1,600 | 253 |
 | writing rule characters | 1,338 | 1,500 | 162 |
 | writing rule lines | 22 | 25 | 3 |
@@ -316,21 +316,21 @@ On a cumulative component basis, the rendered ten-entry writing roster and the
 design rule contribute 1,183 portable characters and 18 lines. On a
 fixture-growth basis against the predecessor render, this change adds 207
 portable characters and three lines to every base doctrine render. The trusted
-router-on fixture requires `8,712 × 1.05 = 9,147.6`. Ceiling gives 9,148. The
-9,200 bound is larger.
+router-on fixture requires `9,004 × 1.05 = 9,454.2`. Ceiling gives 9,455. The
+9,500 bound is larger.
 
 The all-tail fixture requires
-`8,967 × 1.05 = 9,415.35`. Ceiling gives 9,416. The trusted router-on reserve is
-`9,200 − 8,712 = 488` characters. The all-tail reserve is
-`9,500 − 8,967 = 533` characters. The 9,500 bound is larger.
+`9,259 × 1.05 = 9,721.95`. Ceiling gives 9,722. The trusted router-on reserve is
+`9,500 − 9,004 = 496` characters. The all-tail reserve is
+`9,800 − 9,259 = 541` characters. The 9,800 bound is larger.
 
-The deferred-issue fixture requires `10,152 × 1.05 = 10,659.6`. Ceiling gives
-10,660. The shared 10,700 bound keeps the required reserve for every maximal
+The deferred-issue fixture requires `10,444 × 1.05 = 10,966.2`. Ceiling gives
+10,967. The shared 11,000 bound keeps the required reserve for every maximal
 fixture.
 
 The positive control adds one capped tool and six copies of the largest
-measured model row. It measures 11,442 portable characters. It exceeds the
-10,700-character maximal bound by 742. That margin remains larger than the
+measured model row. It measures 11,734 portable characters. It exceeds the
+11,000-character maximal bound by 734. That margin remains larger than the
 192-character maximum model-row growth and the 212-character capped tool growth.
 The raised bound does not blunt the positive control.
 
