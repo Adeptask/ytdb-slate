@@ -1,0 +1,104 @@
+name: Upstream sync
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: upstream-sync
+  cancel-in-progress: false
+
+env:
+  SYNC_BRANCH: automation/upstream-sync
+  UPSTREAM_REPOSITORY: JetBrains/ytdb-slate
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out fork
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.18.0'
+          cache: npm
+
+      - name: Fetch fork and upstream refs
+        run: |
+          set -euo pipefail
+          git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          git fetch --prune upstream main
+
+      - name: Build sync candidate
+        run: |
+          set -euo pipefail
+          if git show-ref --verify --quiet "refs/remotes/origin/${SYNC_BRANCH}"; then
+            git switch --create sync-candidate "refs/remotes/origin/${SYNC_BRANCH}"
+            git merge --no-edit origin/main
+          else
+            git switch --create sync-candidate origin/main
+          fi
+          git merge --no-edit upstream/main
+          if git diff --quiet origin/main...HEAD; then
+            echo "Fork main already contains upstream main. No sync PR is needed."
+            exit 0
+          fi
+
+      # These commands run before GITHUB_TOKEN is placed in the environment.
+      # The candidate may contain unreviewed upstream code, so it must not have
+      # an API token or repository write capability while being executed.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Packaging checks
+        run: |
+          bash verification/run-packaging-checks.sh --repo .
+          bash verification/run-packaging-checks.sh --repo . --self-test
+
+      - name: Extension load check
+        run: bash verification/run-load-check.sh --repo .
+
+      - name: Pure-resolver checks
+        run: bash verification/run-resolver-checks.sh --repo . --strict
+
+      - name: Unit tests
+        run: npm test -- --base origin/main
+
+      - name: Publish candidate branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git push --set-upstream origin "HEAD:${SYNC_BRANCH}"
+
+      - name: Open or update sync pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          existing="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "${GITHUB_REPOSITORY_OWNER}:${SYNC_BRANCH}" --base main --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh pr comment "$existing" --repo "$GITHUB_REPOSITORY" --body "Upstream sync candidate validated at \`$(git rev-parse HEAD)\`. CI passed before this update."
+          else
+            gh pr create \
+              --repo "$GITHUB_REPOSITORY" \
+              --base main \
+              --head "$SYNC_BRANCH" \
+              --title "Sync upstream JetBrains/ytdb-slate" \
+              --body "This pull request merges \`JetBrains/ytdb-slate:main\` into the fork.\n\nThe workflow fetched upstream, merged it without force-pushing, and ran typecheck, packaging checks, extension load checks, pure-resolver checks, and unit tests before publishing this branch.\n\nReview and merge this pull request manually. Conflicts or failed checks publish nothing."
+          fi
