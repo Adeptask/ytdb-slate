@@ -321,16 +321,17 @@ overflow behavior. Slate also does not emit a prompt-size billing notice.
   `router.showWarnings`, as UI notifications or console output. The default
   instead shows one discoverability line when it hides notes.
 - **In the orchestrator's own system prompt, every turn:** the
-  doctrine gains a routing rule — a table with one row per routable
-  model, plus the rules for reading it. This is the surface you do
-  not see, and it is the router's standing cost: 2,030 characters /
-  21 added doctrine lines for six configured models, and 4,095 / 32 for
-  all 17 shipped profiles. In the current snapshot a model row costs 146–183
-  characters, plus a one-off legend clause for each marker it
-  introduces. The complete trusted doctrine grows from 4,617 portable
-  characters and 72 lines with routing off to 6,647 characters and 93 lines
-  for the fixed fabricated six-model fixture, or 8,712 characters and 104
-  lines for all 17 profiles. The fabricated rosters do not read project
+  doctrine gains a routing rule. The rule contains one row for each routable
+  model and instructions for reading the table. This hidden rule is the router's
+  standing cost: 2,030 characters and 21 added doctrine
+  lines for six configured models. It costs 4,095 characters and 32 lines for
+  all 17 shipped profiles. In the current snapshot, one model row costs 146–183
+  characters. Each marker also adds one legend clause.
+
+  The complete trusted doctrine has 4,617 portable characters and 72 lines
+  when routing is off. The fixed fabricated six-model fixture has 6,647
+  characters and 93 lines. The all-profile fixture has 8,712 characters and
+  104 lines. The fabricated rosters do not read project
   config. Those are PORTABLE characters — the
   doctrine with each occurrence of the installed `docs/` directory
   removed, filenames kept — because the doctrine embeds absolute doc
@@ -503,24 +504,39 @@ column above.
 The three cheap-tier profiles are OUT OF SCOPE for routing. They are
 present so that naming one gets data instead of a spurious "no profile"
 warning. All three are non-preferred. Their effort ladders are assumed,
-and they have no effort-labelled capability results. Routing to them is
-a deliberate scope decision, not a default.
+and they have no effort-labelled capability results.
+
+Routing to a cheap-tier profile is a deliberate scope decision. The
+non-preferred marker places it after every preferred candidate. If the
+configured list contains only non-preferred models, the router warns and uses
+one as the implicit base.
 
 The eight alternate-provider profiles are experimental. Pi 0.85.1 public
 catalog metadata was observed on 2026-09-15. Its pure
 `getSupportedThinkingLevels` helper yields three ladder groups. Bridge Sonnet
-and Codex Luna, Sol, and Terra have all seven levels. Bridge Opus and Codex
-Astra exclude `off`. Codex Spark and GPT-5.5 exclude `max`. The installed
-pi-claude-bridge 0.7.0 forwards the two Anthropic catalog maps unchanged.
-This evidence proves metadata support only. It does not prove live execution,
-entitlement, quota, price, context behavior, privacy, retention, or capability.
+and Codex Luna, Sol, and Terra have all seven levels.
+
+Bridge Opus and Codex Astra exclude `off`. Codex Spark and GPT-5.5 exclude
+`max`. The installed pi-claude-bridge 0.7.0 forwards the two Anthropic catalog
+maps unchanged. This evidence proves metadata support only. It does not prove
+live execution, entitlement, quota, price, context behavior, privacy,
+retention, or capability.
 
 OpenAI Codex uses the `openai-codex-responses` provider against the ChatGPT
 backend. Treat it as a separate data boundary from the native OpenAI provider.
 Use synthetic, non-sensitive input for experiments until privacy and retention
-behavior is established. Slate checks registry membership and configured
-authentication. It does not classify input sensitivity or enforce this limit.
-The same doctrine-only limit applies to review and gate actions, as described
+behavior is established.
+
+The experimental profiles are non-preferred metadata, not an explicit-only
+interlock. A preferred model wins when the configured list contains one. An
+experimental-only list makes one experimental model the implicit base. An
+action that omits `model` can therefore use that model. These profiles have no
+measured effort, so an omitted `effort` remains unset for pi to resolve.
+
+Slate checks registry membership and configured authentication. It does not
+classify input sensitivity. It does not enforce the synthetic-input limit or
+prevent review, gate, sensitive, or production work. Those limits are doctrine
+advice. The same limitation applies to review and gate actions, as described
 under [What the router does NOT enforce](#what-the-router-does-not-enforce).
 
 `PROFILES_AS_OF` is **2026-07-29** — the date of the research behind
@@ -553,15 +569,16 @@ on:
   surfaces bills above these numbers.
 
 **Standing limitation: the automated checks are provably blind to
-wrong research data.** Slate's automated checks (a development
-harness in the source repository — it is not part of the published
-package) assert **structure only** for this table — ids and aliases
-resolve, ladders are
-duplicate-free subsets of pi's vocabulary, the measured and gap
-lists are disjoint and cover the ladder, known price rows are well formed,
-empty price schedules carry an unknown-price marker and null tier, numeric
-tiers do not price-invert, and the table is frozen. It asserts no
-research number, and cannot: scaling every price by the same factor
+wrong research data.** Slate's automated checks use a development harness in the source repository.
+The harness is not part of the published package. It asserts **structure only**
+for this table. Identifiers and aliases resolve. Ladders are duplicate-free
+subsets of pi's vocabulary. The measured and gap lists are disjoint and cover
+the ladder.
+
+Known price rows are well formed. Empty price schedules carry an unknown-price
+marker and null tier. Numeric tiers do not price-invert. The table is frozen.
+
+The harness asserts no research number, and cannot. Scaling every price by the same factor
 passes green, a tier moved so that it does not invert prices passes
 green, and an invented hazard clause or evidence sentence passes
 green. Numeric and evidential fidelity to the research is a review

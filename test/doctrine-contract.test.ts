@@ -64,19 +64,16 @@ function extensionContext(cwd: string, warnings: string[] = [], trusted = true):
   } as unknown as ExtensionContext;
 }
 
-function routedResolution(): ModelRouterResolution {
-  const profile = MODEL_PROFILES[0];
-  assert.ok(profile);
+function candidateForProfile(profile: typeof MODEL_PROFILES[number]): RouterCandidate {
   const price = profile.price.at(-1);
-  assert.ok(price);
-  const candidate: RouterCandidate = {
+  return {
     spec: profile.id,
     provider: profile.id.split("/")[0] ?? "",
     id: profile.id.split("/")[1] ?? "",
     profile,
     tier: profile.tier,
-    inUsdPerMTok: price.inUsdPerMTok,
-    outUsdPerMTok: price.outUsdPerMTok,
+    inUsdPerMTok: price?.inUsdPerMTok,
+    outUsdPerMTok: price?.outUsdPerMTok,
     registryCost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: profile.contextWindow ?? undefined,
     ladder: ladderFor(profile),
@@ -85,6 +82,12 @@ function routedResolution(): ModelRouterResolution {
     tierUnsourced: profile.tierUnsourced === true,
     ladderAssumed: profile.ladderAssumed === true,
   };
+}
+
+function routedResolution(): ModelRouterResolution {
+  const profile = MODEL_PROFILES[0];
+  assert.ok(profile);
+  const candidate = candidateForProfile(profile);
   return {
     on: true,
     candidates: [candidate],
@@ -147,6 +150,24 @@ test("routing doctrine distinguishes unknown tiers from unsourced cost classes",
   assert.match(doctrine, /experimental\/cost-class\|[^\n]*\|c2!\|/);
   assert.match(doctrine, /t\? = no tier evidence/);
   assert.match(doctrine, /cN = cost class, not a rank/);
+});
+
+test("experimental profile guidance retains its reviewed meaning in the routing doctrine", { timeout: 5000 }, async () => {
+  const profiles = MODEL_PROFILES.filter((profile) => profile.id.startsWith("claude-bridge/") || profile.id.startsWith("openai-codex/"));
+  const candidates = profiles.map(candidateForProfile);
+  const doctrine = await renderDoctrine({
+    on: true,
+    candidates,
+    cheapest: candidates[0]?.spec,
+    cheapestNonPreferred: true,
+    warnings: [],
+  });
+  assert.equal(profiles.length, 8);
+  for (const profile of profiles) {
+    assert.equal(profile.routeFor, "synthetic non-sensitive experiments; explicit routing preferred", profile.id);
+    assert.equal(profile.avoidFor, "avoid review, gate, sensitive, or production work; advice is not enforced", profile.id);
+    assert.ok(doctrine.includes(`|${profile.routeFor}|${profile.avoidFor}`), `${profile.id} guidance must reach the doctrine in the correct columns`);
+  }
 });
 
 test("routing doctrine renders dated prices and truthful candidate ordering", { timeout: 5000 }, async () => {

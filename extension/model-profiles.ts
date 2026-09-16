@@ -11,8 +11,9 @@
  * vs long-context billing) and, where the digest abbreviates a row, the
  * underlying `gaps.md` / `openai.md` / `anthropic.md` row that digest cites —
  * and carries the corpus's own trace tags so a reader can find the source row.
- * `asOf` on every profile, and PROFILES_AS_OF for the set, is the date of that
- * research: 2026-07-29. Cache-retention evidence is a later addition. Its own
+ * `asOf` on each base-corpus profile, and PROFILES_AS_OF for that corpus, is
+ * the research date 2026-07-29. Experimental profiles carry their separate
+ * catalog observation date. Cache-retention evidence is a later addition. Its own
  * documented retrieval and measured observation dates are carried at the value.
  *
  * PROVENANCE RULE, stated WITHOUT A COUNT so it cannot fall out of date: a
@@ -83,12 +84,12 @@
  *    rejects outright is a different axis and lives in `apiRejectedLevels`,
  *    which is hard, not advisory.
  *  - `tier` is a strictly ordinal capability/cost class, so the cheapest tier
- *    that clears a task wins. `nonPreferred` is orthogonal and ABSOLUTE: a
- *    non-null reason means NEVER auto-select this model, at any tier, whatever
- *    a tier-ascending sort would otherwise pick — every such string therefore
- *    opens with "NEVER AUTO-SELECT". Where the digest assigns no ordinal at all,
- *    `tierUnsourced` is set, and a consumer that sorts by tier must not read
- *    those tiers as a sourced ranking.
+ *    that clears a task wins. `nonPreferred` is orthogonal and absolute for
+ *    ordering: every preferred model sorts before every non-preferred model.
+ *    It is not a hard prohibition. If every configured candidate is
+ *    non-preferred, the router warns and uses one as the implicit base. Where
+ *    the digest assigns no ordinal at all, `tierUnsourced` is set, and a
+ *    consumer that sorts by tier must not read those tiers as a sourced ranking.
  *
  * Judgment calls made while transcribing, recorded so they can be reversed:
  *
@@ -262,7 +263,7 @@ export interface ModelProfile {
 	ladderAssumed?: true;
 	/** levels the PROVIDER rejects outright (hard, unlike `evidenceGapAt`); absent = none traced */
 	apiRejectedLevels?: ThinkingLevel[];
-	/** one-clause reason when this model must never be a default pick; null when preferred. Non-null is ABSOLUTE and overrides any tier sort — every reason opens with "NEVER AUTO-SELECT". */
+	/** one-clause reason to rank this model after preferred candidates; null when preferred. An all-non-preferred list still uses one as the implicit base. */
 	nonPreferred: string | null;
 	/** short task classes to route here for */
 	routeFor: string;
@@ -281,7 +282,7 @@ export interface ModelProfile {
 	asOf: string;
 }
 
-/** Date of the research behind every profile below (`research/digest-v5.md`). */
+/** Date of the base research corpus (`research/digest-v5.md`). Experimental rows carry their own later `asOf` date. */
 export const PROFILES_AS_OF = "2026-07-29";
 
 /**
@@ -325,9 +326,9 @@ function experimentalProfile(id: string, ladder: readonly ThinkingLevel[]): Mode
 		longContextMultipliers: null,
 		tier: null,
 		tierUnsourced: true,
-		nonPreferred: "NEVER AUTO-SELECT — experimental provider profile has no capability measurement or verified service execution [catalog].",
-		routeFor: "explicit experiments with synthetic non-sensitive input only",
-		avoidFor: "review, gate, sensitive, or production work because capability is unmeasured",
+		nonPreferred: "NON-PREFERRED — no capability measurement or verified service execution. An all-non-preferred list can still use this model as its implicit base [catalog].",
+		routeFor: "synthetic non-sensitive experiments; explicit routing preferred",
+		avoidFor: "avoid review, gate, sensitive, or production work; advice is not enforced",
 		hazards: [
 			"EXPERIMENTAL: catalog recognition is not live service verification",
 			"DATA BOUNDARY: privacy and retention behavior is unverified. Use synthetic non-sensitive input only",

@@ -1320,8 +1320,8 @@ Shipped profile table (`extension/model-profiles.ts`) — **structural only**:
 | `profiles-ids` | every id is a canonical, lower-case, unique `provider/id` spec, and every profile carries the fields the router reads |
 | `profiles-aliases` | `findProfile` resolves every id (case-insensitively) and every alias to its own profile; no alias is shared between profiles, shadows a canonical id, or is empty/padded; an unknown spec resolves to `undefined` |
 | `profiles-ladder` | each ladder is a non-empty, duplicate-free subset of pi's effort vocabulary, and `capabilityMeasuredAt` / `evidenceGapAt` are disjoint and exactly cover it. This is the canary for a **mistyped ladder key**: a wrong key silently falls back to the widest ladder, which then contains levels the profile's own lists never mention |
-| `profiles-price` | every schedule is a non-empty, ascending, non-overlapping sequence of rows with `null`-or-ISO bounds, positive prices and output ≥ input; `tier` is an integer 1–4; `nonPreferred` is `null` or a non-empty reason; and tiers do not **price-invert** (no tier is dearer at its cheapest than the next tier up) |
-| `profiles-meta` | `PROFILES_AS_OF` is an ISO date, every profile carries it, the table is deep-frozen, and the free-text fields are of the declared shape |
+| `profiles-price` | each known schedule is an ascending, non-overlapping sequence of rows with `null`-or-ISO bounds, positive prices and output ≥ input. An empty schedule requires both an unknown-price marker and a null tier. A tier is null or an integer from 1 through 4. `nonPreferred` is `null` or a non-empty reason. Numeric tiers do not **price-invert** (no tier is dearer at its cheapest than the next tier up) |
+| `profiles-meta` | `PROFILES_AS_OF` is the ISO date of the nine base-corpus profiles. Each of the eight experimental profiles carries its documented 2026-09-15 observation date. The table is deep-frozen, and the free-text fields have the declared shape |
 
 What the `profiles-*` checks deliberately do **not** do: assert any research
 number. A price, a context window or a benchmark value may legitimately change on

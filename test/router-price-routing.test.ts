@@ -154,7 +154,10 @@ test("experimental provider profiles remain distinct and pass real router and ef
     assert.equal(p.id, spec);
     assert.equal(p.tier, null);
     assert.equal(p.tierUnsourced, true);
-    assert.equal(p.nonPreferred?.startsWith("NEVER AUTO-SELECT"), true);
+    assert.equal(p.nonPreferred?.startsWith("NON-PREFERRED"), true);
+    assert.match(p.nonPreferred ?? "", /implicit base/);
+    assert.equal(p.routeFor, "synthetic non-sensitive experiments; explicit routing preferred");
+    assert.equal(p.avoidFor, "avoid review, gate, sensitive, or production work; advice is not enforced");
     assert.deepEqual(p.price, []);
     assert.deepEqual(p.capabilityMeasuredAt, []);
     assert.deepEqual(ladderFor(p), EXPERIMENTAL_LADDERS[spec]);
@@ -205,6 +208,27 @@ test("experimental provider profiles remain distinct and pass real router and ef
   assert.equal(droppedWarnings.some((warning) => warning.includes("not in pi's model registry")), true);
   assert.equal(droppedWarnings.some((warning) => warning.includes("no usable credentials configured")), true);
   assert.equal(MODEL_PROFILES.filter((p) => experimental.includes(p.id)).length, 8);
+
+  const onlySpec = "openai-codex/gpt-5.6-sol";
+  const onlyProfile = findProfile(onlySpec);
+  assert.ok(onlyProfile);
+  const onlyWarnings: string[] = [];
+  const experimentalOnly = resolveModelRouter({
+    models: [onlySpec],
+    registry: {
+      find: (provider, id) => models[`${provider}/${id}`],
+      hasConfiguredAuth: () => true,
+    },
+  }, (warning) => onlyWarnings.push(warning));
+  assert.equal(experimentalOnly.cheapest, onlySpec);
+  assert.equal(experimentalOnly.cheapestNonPreferred, true);
+  assert.equal(onlyWarnings.some((warning) => warning.includes("default base model")), true);
+  const implicit = planRoute({ resolution: experimentalOnly });
+  assert.equal(implicit.kind, "proceed");
+  if (implicit.kind === "proceed") {
+    assert.equal(implicit.model, onlySpec);
+    assert.equal(implicit.effort, undefined, "an experimental profile has no measured effort to derive");
+  }
 });
 
 test("registry costs survive absent, malformed, non-finite, and throwing fields", () => {

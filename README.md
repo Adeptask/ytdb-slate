@@ -116,6 +116,8 @@ pi install -l npm:ytdb-slate@<version>
 
 > **Note on pinning:** pinned specs (`@<version>`) are deliberately skipped by `pi update --extensions` / `pi update --all`. Bumping the pin is a conscious project change — review Slate's shipped workflow docs for changes when you do.
 
+Adeptask fork operators can install a verified fork commit before npm publication. See [`docs/fork-maintenance.md`](docs/fork-maintenance.md) for the pinned project-local install and update commands.
+
 ## Configuration
 
 Optional config file: `slate.json` in the project's pi config dir (`.pi/slate.json`). It is honored **only in trusted projects** (see [Trust](#trust)).
@@ -211,6 +213,7 @@ In orchestrator mode, Slate appends a short **doctrine** (a block of numbered ru
 - `docs/context-budget.md` — the orchestrator `contextBudget`: defaults, per-model overrides, the window clamp, and the pricing rationale (also **reference documentation**, not cited by the doctrine)
 - `docs/writing-guidance.md` — the always-active writing convention, ignored writing keys, status line, and checker CLI
 - `docs/model-routing.md` — the action-level model routing reference. It covers the three `router` keys, model eligibility, omitted effort, and dispatch guards. It also covers first-session warnings. The doctrine cites this absolute path only while the routing rule renders. This path is fourth normally and fifth when `workflow.draftPRs` is on. The rule renders the live list because it depends on the session registry and credentials.
+- `docs/fork-maintenance.md` — the Adeptask fork sync, recovery, and pinned project-local installation guide (**reference documentation**, not workflow doctrine)
 
 Project-specific additions layer on top — they extend, not replace, the shipped doctrine — via two distinct mechanisms:
 

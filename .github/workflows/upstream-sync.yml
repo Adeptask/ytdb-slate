@@ -5,100 +5,258 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 concurrency:
-  group: upstream-sync
+  group: upstream-sync-${{ github.repository }}
   cancel-in-progress: false
 
 env:
-  SYNC_BRANCH: automation/upstream-sync
+  FORK_REPOSITORY: Adeptask/ytdb-slate
   UPSTREAM_REPOSITORY: JetBrains/ytdb-slate
 
 jobs:
-  sync:
+  prepare:
+    if: github.repository == 'Adeptask/ytdb-slate'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.prepare.outputs.changed }}
+      base: ${{ steps.prepare.outputs.base }}
+      upstream: ${{ steps.prepare.outputs.upstream }}
+      candidate: ${{ steps.prepare.outputs.candidate }}
+      tree: ${{ steps.prepare.outputs.tree }}
+      bundle_sha256: ${{ steps.prepare.outputs.bundle_sha256 }}
+      manifest_sha256: ${{ steps.prepare.outputs.manifest_sha256 }}
+      helper_sha256: ${{ steps.prepare.outputs.helper_sha256 }}
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
     steps:
-      - name: Check out fork
+      - name: Check out the trusted workflow revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: main
+          persist-credentials: false
+          ref: ${{ github.sha }}
 
-      - name: Set up Node
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '24.18.0'
-          cache: npm
-
-      - name: Fetch fork and upstream refs
+      - name: Fetch exact fork and upstream tips
         run: |
           set -euo pipefail
-          git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
-          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
-          git fetch --prune upstream main
-
-      - name: Build sync candidate
-        run: |
-          set -euo pipefail
-          if git show-ref --verify --quiet "refs/remotes/origin/${SYNC_BRANCH}"; then
-            git switch --create sync-candidate "refs/remotes/origin/${SYNC_BRANCH}"
-            git merge --no-edit origin/main
-          else
-            git switch --create sync-candidate origin/main
+          git fetch --no-tags --force origin '+refs/heads/main:refs/remotes/fork/main'
+          git fetch --no-tags --force "https://github.com/${UPSTREAM_REPOSITORY}.git" '+refs/heads/main:refs/remotes/upstream/main'
+          fork_tip="$(git rev-parse refs/remotes/fork/main)"
+          if [ "$fork_tip" != "$GITHUB_SHA" ]; then
+            echo "fork main moved from workflow revision $GITHUB_SHA to $fork_tip; a later run must prepare the candidate" >&2
+            exit 1
           fi
-          git merge --no-edit upstream/main
-          if git diff --quiet origin/main...HEAD; then
-            echo "Fork main already contains upstream main. No sync PR is needed."
+
+      - name: Prepare immutable candidate
+        id: prepare
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/upstream-candidate"
+          result="$RUNNER_TEMP/upstream-prepare.json"
+          node verification/upstream-sync-check.mjs prepare \
+            --repo . \
+            --base-ref refs/remotes/fork/main \
+            --upstream-ref refs/remotes/upstream/main \
+            --output-dir "$artifact" > "$result"
+          node -e 'const r=require(process.argv[1]); for (const k of ["changed","base","upstream"]) console.log(`${k}=${r[k]}`)' "$result" >> "$GITHUB_OUTPUT"
+          changed="$(node -p 'require(process.argv[1]).changed' "$result")"
+          if [ "$changed" != true ]; then
+            echo "Fork main already contains the recorded upstream main."
             exit 0
           fi
+          cp verification/upstream-sync-check.mjs "$artifact/trusted-helper.mjs"
+          for key in candidate tree bundleSha256 manifestSha256; do
+            value="$(node -p "require(process.argv[1]).$key" "$result")"
+            output_key="$(printf '%s' "$key" | sed -E 's/([A-Z])/_\L\1/g')"
+            echo "$output_key=$value" >> "$GITHUB_OUTPUT"
+          done
+          echo "helper_sha256=$(sha256sum "$artifact/trusted-helper.mjs" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
-      # These commands run before GITHUB_TOKEN is placed in the environment.
-      # The candidate may contain unreviewed upstream code, so it must not have
-      # an API token or repository write capability while being executed.
-      - name: Install dependencies
+      - name: Upload immutable candidate
+        id: upload
+        if: steps.prepare.outputs.changed == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: upstream-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/upstream-candidate
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+  validate:
+    if: github.repository == 'Adeptask/ytdb-slate' && needs.prepare.outputs.changed == 'true'
+    needs: prepare
+    name: Validate Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions: {}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.23.1', '24.18.0']
+    steps:
+      - name: Download candidate by immutable artifact ID
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.prepare.outputs.artifact_id }}
+          path: ${{ runner.temp }}/artifact
+          merge-multiple: true
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Verify and check out the exact candidate
+        env:
+          BASE: ${{ needs.prepare.outputs.base }}
+          UPSTREAM: ${{ needs.prepare.outputs.upstream }}
+          CANDIDATE: ${{ needs.prepare.outputs.candidate }}
+          TREE: ${{ needs.prepare.outputs.tree }}
+          BUNDLE_SHA256: ${{ needs.prepare.outputs.bundle_sha256 }}
+          MANIFEST_SHA256: ${{ needs.prepare.outputs.manifest_sha256 }}
+          HELPER_SHA256: ${{ needs.prepare.outputs.helper_sha256 }}
+          ARTIFACT_DIGEST: ${{ needs.prepare.outputs.artifact_digest }}
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/artifact"
+          [ -n "$ARTIFACT_DIGEST" ] || { echo "missing GitHub artifact digest" >&2; exit 1; }
+          node --input-type=module - "$artifact" <<'NODE'
+          import { lstatSync, readdirSync } from "node:fs";
+          import { join } from "node:path";
+          const artifact = process.argv[2];
+          const root = lstatSync(artifact);
+          if (!root.isDirectory() || root.isSymbolicLink()) throw new Error("artifact path is not a real directory");
+          const expected = ["candidate.bundle", "manifest.json", "trusted-helper.mjs"];
+          const entries = readdirSync(artifact).sort();
+          if (JSON.stringify(entries) !== JSON.stringify(expected)) {
+            throw new Error(`artifact file roster differs: ${entries.join(", ")}`);
+          }
+          for (const name of expected) {
+            const stat = lstatSync(join(artifact, name));
+            if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`artifact entry is not a regular file: ${name}`);
+          }
+          NODE
+          printf '%s  %s\n' "$HELPER_SHA256" "$artifact/trusted-helper.mjs" | sha256sum --check --status
+          node "$artifact/trusted-helper.mjs" verify \
+            --bundle "$artifact/candidate.bundle" \
+            --manifest "$artifact/manifest.json" \
+            --bundle-sha256 "$BUNDLE_SHA256" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --base "$BASE" --upstream "$UPSTREAM" --candidate "$CANDIDATE" --tree "$TREE" \
+            --checkout-dir "$RUNNER_TEMP/candidate"
+
+      - name: Install dependencies without lifecycle scripts
+        working-directory: ${{ runner.temp }}/candidate
         run: npm ci --ignore-scripts
 
       - name: Typecheck
+        working-directory: ${{ runner.temp }}/candidate
         run: npm run typecheck
 
       - name: Packaging checks
+        working-directory: ${{ runner.temp }}/candidate
         run: |
           bash verification/run-packaging-checks.sh --repo .
           bash verification/run-packaging-checks.sh --repo . --self-test
 
       - name: Extension load check
+        working-directory: ${{ runner.temp }}/candidate
         run: bash verification/run-load-check.sh --repo .
 
       - name: Pure-resolver checks
+        working-directory: ${{ runner.temp }}/candidate
         run: bash verification/run-resolver-checks.sh --repo . --strict
 
-      - name: Unit tests
-        run: npm test -- --base origin/main
-
-      - name: Publish candidate branch
+      - name: Unit tests and strict patch-coverage verdict
+        working-directory: ${{ runner.temp }}/candidate
         env:
-          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ needs.prepare.outputs.base }}
+          TRUSTED_HELPER: ${{ runner.temp }}/artifact/trusted-helper.mjs
+          HELPER_SHA256: ${{ needs.prepare.outputs.helper_sha256 }}
         run: |
           set -euo pipefail
-          git push --set-upstream origin "HEAD:${SYNC_BRANCH}"
+          log="$RUNNER_TEMP/test-${{ matrix.node }}.log"
+          npm test -- --base "$BASE" | tee "$log"
+          printf '%s  %s\n' "$HELPER_SHA256" "$TRUSTED_HELPER" | sha256sum --check --status
+          node "$TRUSTED_HELPER" verdict --log "$log"
 
-      - name: Open or update sync pull request
+  publish:
+    if: github.repository == 'Adeptask/ytdb-slate' && needs.prepare.outputs.changed == 'true'
+    needs: [prepare, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the original candidate by immutable artifact ID
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          artifact-ids: ${{ needs.prepare.outputs.artifact_id }}
+          path: ${{ runner.temp }}/artifact
+          merge-multiple: true
+
+      - name: Verify trusted helper and artifact
         env:
-          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ needs.prepare.outputs.base }}
+          UPSTREAM: ${{ needs.prepare.outputs.upstream }}
+          CANDIDATE: ${{ needs.prepare.outputs.candidate }}
+          TREE: ${{ needs.prepare.outputs.tree }}
+          BUNDLE_SHA256: ${{ needs.prepare.outputs.bundle_sha256 }}
+          MANIFEST_SHA256: ${{ needs.prepare.outputs.manifest_sha256 }}
+          HELPER_SHA256: ${{ needs.prepare.outputs.helper_sha256 }}
+          ARTIFACT_DIGEST: ${{ needs.prepare.outputs.artifact_digest }}
         run: |
           set -euo pipefail
-          existing="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "${GITHUB_REPOSITORY_OWNER}:${SYNC_BRANCH}" --base main --state open --json number --jq '.[0].number // empty')"
-          if [ -n "$existing" ]; then
-            gh pr comment "$existing" --repo "$GITHUB_REPOSITORY" --body "Upstream sync candidate validated at \`$(git rev-parse HEAD)\`. CI passed before this update."
-          else
-            gh pr create \
-              --repo "$GITHUB_REPOSITORY" \
-              --base main \
-              --head "$SYNC_BRANCH" \
-              --title "Sync upstream JetBrains/ytdb-slate" \
-              --body "This pull request merges \`JetBrains/ytdb-slate:main\` into the fork.\n\nThe workflow fetched upstream, merged it without force-pushing, and ran typecheck, packaging checks, extension load checks, pure-resolver checks, and unit tests before publishing this branch.\n\nReview and merge this pull request manually. Conflicts or failed checks publish nothing."
-          fi
+          artifact="$RUNNER_TEMP/artifact"
+          [ -n "$ARTIFACT_DIGEST" ] || { echo "missing GitHub artifact digest" >&2; exit 1; }
+          node --input-type=module - "$artifact" <<'NODE'
+          import { lstatSync, readdirSync } from "node:fs";
+          import { join } from "node:path";
+          const artifact = process.argv[2];
+          const root = lstatSync(artifact);
+          if (!root.isDirectory() || root.isSymbolicLink()) throw new Error("artifact path is not a real directory");
+          const expected = ["candidate.bundle", "manifest.json", "trusted-helper.mjs"];
+          const entries = readdirSync(artifact).sort();
+          if (JSON.stringify(entries) !== JSON.stringify(expected)) {
+            throw new Error(`artifact file roster differs: ${entries.join(", ")}`);
+          }
+          for (const name of expected) {
+            const stat = lstatSync(join(artifact, name));
+            if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`artifact entry is not a regular file: ${name}`);
+          }
+          NODE
+          printf '%s  %s\n' "$HELPER_SHA256" "$artifact/trusted-helper.mjs" | sha256sum --check --status
+          node "$artifact/trusted-helper.mjs" verify \
+            --bundle "$artifact/candidate.bundle" \
+            --manifest "$artifact/manifest.json" \
+            --bundle-sha256 "$BUNDLE_SHA256" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --base "$BASE" --upstream "$UPSTREAM" --candidate "$CANDIDATE" --tree "$TREE"
+
+      - name: Recheck live refs and publish with the exact-base lease
+        env:
+          SYNC_TOKEN: ${{ github.token }}
+          BASE: ${{ needs.prepare.outputs.base }}
+          UPSTREAM: ${{ needs.prepare.outputs.upstream }}
+          CANDIDATE: ${{ needs.prepare.outputs.candidate }}
+          TREE: ${{ needs.prepare.outputs.tree }}
+          BUNDLE_SHA256: ${{ needs.prepare.outputs.bundle_sha256 }}
+          MANIFEST_SHA256: ${{ needs.prepare.outputs.manifest_sha256 }}
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/artifact"
+          node "$artifact/trusted-helper.mjs" publish \
+            --bundle "$artifact/candidate.bundle" \
+            --manifest "$artifact/manifest.json" \
+            --bundle-sha256 "$BUNDLE_SHA256" \
+            --manifest-sha256 "$MANIFEST_SHA256" \
+            --base "$BASE" --upstream "$UPSTREAM" --candidate "$CANDIDATE" --tree "$TREE" \
+            --fork-url "https://github.com/${FORK_REPOSITORY}.git" \
+            --upstream-url "https://github.com/${UPSTREAM_REPOSITORY}.git" \
+            --token-env SYNC_TOKEN
