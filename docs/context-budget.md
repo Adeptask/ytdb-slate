@@ -215,10 +215,10 @@ must agree with `verification/README.md`:
 | on | fixed six-model fixture | off | set | 5 | 6,647 | 93 |
 | on | fixed six-model fixture | on | absent | 6 | 6,666 | 93 |
 | on | fixed six-model fixture | on | set | 6 | 6,666 | 93 |
-| on | all 19 shipped | off | absent | 5 | 9,004 | 106 |
-| on | all 19 shipped | off | set | 5 | 9,004 | 106 |
-| on | all 19 shipped | on | absent | 6 | 9,023 | 106 |
-| on | all 19 shipped | on | set | 6 | 9,023 | 106 |
+| on | all 19 shipped | off | absent | 5 | 8,970 | 106 |
+| on | all 19 shipped | off | set | 5 | 8,970 | 106 |
+| on | all 19 shipped | on | absent | 6 | 8,989 | 106 |
+| on | all 19 shipped | on | set | 6 | 8,989 | 106 |
 
 An untrusted project receives no writing or routing tail whatever its
 `slate.json` says. Its fixed doctrine remains 2,708 portable characters, 43
@@ -250,8 +250,8 @@ worker extensions and support verification decisions:
 | basis | models | worker extensions | paths | portable | lines | rough tokens |
 | --- | ---: | --- | ---: | ---: | ---: | ---: |
 | fixture mirroring current `.pi/slate.json`: draft PRs + writing, pi-registry windows | 5 resolved | pinned-package 2 units / 4 tools | 6 | 7,424 | 102 | ≈1,856 |
-| stable maximal fixture | 19 | synthetic 2 units / 4 tools, every rendered field at its cap | 6 | 10,370 | 116 | ≈2,593 |
-| deferred-issue maximal fixture | 19 | synthetic 2 units / 4 tools, every rendered field at its cap | 6 | 10,444 | 117 | ≈2,611 |
+| stable maximal fixture | 19 | synthetic 2 units / 4 tools, every rendered field at its cap | 6 | 10,336 | 116 | ≈2,593 |
+| deferred-issue maximal fixture | 19 | synthetic 2 units / 4 tools, every rendered field at its cap | 6 | 10,410 | 117 | ≈2,611 |
 
 The dogfood fixture mirrors `workflow.draftPRs: true`, both ignored writing keys,
 and the five models in this repository's `.pi/slate.json`. A change to that
@@ -299,14 +299,14 @@ applies the five-percent rule to every upper bound, so this decision is auditabl
 | routing rule lines | 35 | 37 | 2 |
 | routing fixed prose | 1,133 | 1,500 | 367 |
 | largest model row | 183 | 300 | 117 |
-| trusted router-on doctrine | 9,004 | 9,500 | 496 |
+| trusted router-on doctrine | 8,970 | 9,500 | 530 |
 | writing and design doctrine | 4,617 | 5,600 | 983 |
-| writing plus router | 9,004 | 9,500 | 496 |
+| writing plus router | 8,970 | 9,500 | 530 |
 | writing plus extensions | 4,872 | 6,000 | 1,128 |
-| writing plus router and extensions | 9,259 | 9,800 | 541 |
-| maximal doctrine, draft PRs enabled | 10,370 | 11,000 | 630 |
-| maximal doctrine, draft PRs disabled | 10,351 | 11,000 | 649 |
-| maximal doctrine, deferred-issue prompt enabled | 10,444 | 11,000 | 556 |
+| writing plus router and extensions | 9,225 | 9,800 | 575 |
+| maximal doctrine, draft PRs enabled | 10,336 | 11,000 | 664 |
+| maximal doctrine, draft PRs disabled | 10,317 | 11,000 | 683 |
+| maximal doctrine, deferred-issue prompt enabled | 10,410 | 11,000 | 590 |
 | capped worker rule | 1,347 | 1,600 | 253 |
 | writing rule characters | 1,338 | 1,500 | 162 |
 | writing rule lines | 22 | 25 | 3 |
@@ -316,21 +316,21 @@ On a cumulative component basis, the rendered ten-entry writing roster and the
 design rule contribute 1,183 portable characters and 18 lines. On a
 fixture-growth basis against the predecessor render, this change adds 207
 portable characters and three lines to every base doctrine render. The trusted
-router-on fixture requires `9,004 × 1.05 = 9,454.2`. Ceiling gives 9,455. The
+router-on fixture requires `8,970 × 1.05 = 9,418.5`. Ceiling gives 9,419. The
 9,500 bound is larger.
 
 The all-tail fixture requires
-`9,259 × 1.05 = 9,721.95`. Ceiling gives 9,722. The trusted router-on reserve is
-`9,500 − 9,004 = 496` characters. The all-tail reserve is
-`9,800 − 9,259 = 541` characters. The 9,800 bound is larger.
+`9,225 × 1.05 = 9,686.25`. Ceiling gives 9,687. The trusted router-on reserve is
+`9,500 − 8,970 = 530` characters. The all-tail reserve is
+`9,800 − 9,225 = 575` characters. The 9,800 bound is larger.
 
-The deferred-issue fixture requires `10,444 × 1.05 = 10,966.2`. Ceiling gives
-10,967. The shared 11,000 bound keeps the required reserve for every maximal
+The deferred-issue fixture requires `10,410 × 1.05 = 10,930.5`. Ceiling gives
+10,931. The shared 11,000 bound keeps the required reserve for every maximal
 fixture.
 
 The positive control adds one capped tool and six copies of the largest
-measured model row. It measures 11,734 portable characters. It exceeds the
-11,000-character maximal bound by 734. That margin remains larger than the
+measured model row. It measures 11,700 portable characters. It exceeds the
+11,000-character maximal bound by 700. That margin remains larger than the
 192-character maximum model-row growth and the 212-character capped tool growth.
 The raised bound does not blunt the positive control.
 
