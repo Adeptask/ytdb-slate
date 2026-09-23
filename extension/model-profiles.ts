@@ -342,9 +342,6 @@ function experimentalProfile(id: string, ladder: readonly ThinkingLevel[]): Mode
 }
 
 const EXPERIMENTAL_PROFILES = [
-	// pi-claude-bridge 0.7.0 forwards these public Anthropic catalog maps unchanged.
-	experimentalProfile("claude-bridge/claude-sonnet-5", FULL_LADDER),
-	experimentalProfile("claude-bridge/claude-opus-5", NO_OFF_LADDER),
 	// Pi 0.85.1 registers these through the openai-codex-responses provider.
 	experimentalProfile("openai-codex/gpt-5.3-codex-spark", NO_MAX_LADDER),
 	experimentalProfile("openai-codex/gpt-5.5", NO_MAX_LADDER),
@@ -938,6 +935,20 @@ const PROFILES: ModelProfile[] = [
 	},
 	...EXPERIMENTAL_PROFILES,
 ];
+
+// Bridge copies inherit native Anthropic routing data. This is an explicit
+// transport assumption, not independent evidence about the subscription bridge.
+PROFILES.push(...PROFILES.filter((profile) => profile.id.startsWith("anthropic/") &&
+	["anthropic/claude-sonnet-5", "anthropic/claude-opus-5"].includes(profile.id)).map((profile) => {
+	const ladder = profile.id.endsWith("opus-5") ? NO_OFF_LADDER : FULL_LADDER;
+	return {
+		...profile,
+		id: profile.id.replace("anthropic/", "claude-bridge/"),
+		aliases: profile.aliases.filter((alias) => alias.startsWith("anthropic/")).map((alias) => alias.replace("anthropic/", "claude-bridge/")),
+		evidenceGapAt: profile.evidenceGapAt.filter((level) => ladder.includes(level)),
+		capabilityMeasuredAt: profile.capabilityMeasuredAt.filter((level) => ladder.includes(level)),
+	};
+}));
 
 // Derived provider copies: reuse the OpenAI routing configuration by explicit policy.
 // These copies do not represent separate research on the Codex provider surface.

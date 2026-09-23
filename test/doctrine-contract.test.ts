@@ -162,7 +162,7 @@ test("experimental profile guidance retains its reviewed meaning in the routing 
     cheapestNonPreferred: true,
     warnings: [],
   });
-  assert.equal(profiles.length, 5);
+  assert.equal(profiles.length, 3);
   for (const profile of profiles) {
     assert.equal(profile.routeFor, "synthetic non-sensitive experiments; explicit routing preferred", profile.id);
     assert.equal(profile.avoidFor, "avoid review, gate, sensitive, or production work; advice is not enforced", profile.id);

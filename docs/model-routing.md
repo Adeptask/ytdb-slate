@@ -476,8 +476,8 @@ exactly — a spec that differs is dropped as unprofiled:
 | `openai/gpt-5.4-nano` | none | cheap tier, out of scope (below) |
 | `openai/gpt-5.4-mini` | none | cheap tier, out of scope |
 | `anthropic/claude-haiku-4-5` | none | cheap tier, out of scope |
-| `claude-bridge/claude-sonnet-5` | none | experimental alternate provider, non-preferred |
-| `claude-bridge/claude-opus-5` | none | experimental alternate provider, non-preferred |
+| `claude-bridge/claude-sonnet-5` | high, xhigh, max | inherited native Anthropic evidence; bridge transport unmeasured |
+| `claude-bridge/claude-opus-5` | low, medium, high, xhigh, max | inherited native Anthropic evidence; bridge transport unmeasured |
 | `openai-codex/gpt-5.3-codex-spark` | none | experimental ChatGPT backend, non-preferred |
 | `openai-codex/gpt-5.5` | none | experimental ChatGPT backend, non-preferred |
 | `openai-codex/gpt-5.6-luna` | none | experimental ChatGPT backend, non-preferred |
@@ -511,16 +511,18 @@ non-preferred marker places it after every preferred candidate. If the
 configured list contains only non-preferred models, the router warns and uses
 one as the implicit base.
 
-The eight alternate-provider profiles are experimental. Pi 0.85.1 public
-catalog metadata was observed on 2026-09-15. Its pure
-`getSupportedThinkingLevels` helper yields three ladder groups. Bridge Sonnet
-and Codex Luna, Sol, and Terra have all seven levels.
+The alternate-provider profiles have two policies. Bridge Sonnet 5 and Opus 5
+are available for normal tasks. They intentionally copy the corresponding
+native Anthropic routing data while keeping independent `claude-bridge`
+provider identity. This is an explicit, user-authorized inheritance assumption.
+It is not independent evidence about bridge execution, entitlement, quota,
+price, context behavior, privacy, retention, or capability. The bridge Opus
+ladder excludes `off`, because the bridge catalog does not support that level.
 
-Bridge Opus and Codex Astra exclude `off`. Codex Spark and GPT-5.5 exclude
-`max`. The installed pi-claude-bridge 0.7.0 forwards the two Anthropic catalog
-maps unchanged. This evidence proves metadata support only. It does not prove
-live execution, entitlement, quota, price, context behavior, privacy,
-retention, or capability.
+The six Codex profiles remain experimental. Codex Luna, Sol, and Terra have all
+seven levels. Codex Astra excludes `off`. Codex Spark and GPT-5.5 exclude `max`.
+Use synthetic, non-sensitive input for Codex experiments until privacy and
+retention behavior is established.
 
 OpenAI Codex uses the `openai-codex-responses` provider against the ChatGPT
 backend. Treat it as a separate data boundary from the native OpenAI provider.
@@ -530,8 +532,9 @@ behavior is established.
 The experimental profiles are non-preferred metadata, not an explicit-only
 interlock. A preferred model wins when the configured list contains one. An
 experimental-only list makes one experimental model the implicit base. An
-action that omits `model` can therefore use that model. These profiles have no
-measured effort, so an omitted `effort` remains unset for pi to resolve.
+action that omits `model` can therefore use that model. The remaining
+experimental Codex profiles have no measured effort, so an omitted `effort`
+remains unset for pi to resolve.
 
 Slate checks registry membership and configured authentication. It does not
 classify input sensitivity. It does not enforce the synthetic-input limit or

@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import test from "node:test";
 import { findProfile, ladderFor, MODEL_PROFILES, type ModelProfile, type PriceRow, type ThinkingLevel } from "../extension/model-profiles.ts";
 import {
@@ -116,8 +120,6 @@ function divergenceWarnings(verdict: RoutePlanVerdict): readonly string[] {
 const ALL_THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 const EXPERIMENTAL_LADDERS: Readonly<Record<string, readonly ThinkingLevel[]>> = {
-  "claude-bridge/claude-sonnet-5": ["off", "minimal", "low", "medium", "high", "xhigh", "max"],
-  "claude-bridge/claude-opus-5": ["minimal", "low", "medium", "high", "xhigh", "max"],
   "openai-codex/gpt-5.3-codex-spark": ["off", "minimal", "low", "medium", "high", "xhigh"],
   "openai-codex/gpt-5.5": ["off", "minimal", "low", "medium", "high", "xhigh"],
   "openai-codex/gpt-6-astra": ["minimal", "low", "medium", "high", "xhigh", "max"],
@@ -143,6 +145,64 @@ test("every OpenAI profile has an equivalent Codex profile with independent look
     for (const level of ALL_THINKING_LEVELS) {
       assert.equal(checkEffort(resolved, id, level).verdict, checkEffort(resolved, original.id, level).verdict);
     }
+  }
+});
+
+test("bridge profiles inherit native Anthropic data with independent provider identity and effort guards", () => {
+  const bridge = ["claude-bridge/claude-sonnet-5", "claude-bridge/claude-opus-5"];
+  for (const spec of bridge) {
+    const nativeSpec = spec.replace("claude-bridge/", "anthropic/");
+    const native = findProfile(nativeSpec);
+    const copy = findProfile(spec);
+    assert.ok(native, nativeSpec);
+    assert.ok(copy, spec);
+    assert.notEqual(copy, native);
+    const aliases = native.aliases.filter((alias) => alias.startsWith("anthropic/"))
+      .map((alias) => alias.replace("anthropic/", "claude-bridge/"));
+    const expected = spec.endsWith("opus-5")
+      ? { ...native, id: spec, aliases, evidenceGapAt: native.evidenceGapAt.filter((level) => level !== "off"), capabilityMeasuredAt: native.capabilityMeasuredAt.filter((level) => level !== "off") }
+      : { ...native, id: spec, aliases };
+    assert.deepEqual(copy, expected);
+    assert.deepEqual(copy.aliases, aliases);
+    for (const alias of copy.aliases) assert.equal(findProfile(alias), copy);
+    assert.deepEqual(ladderFor(copy), spec.endsWith("opus-5") ? ["minimal", "low", "medium", "high", "xhigh", "max"] : ladderFor(native));
+    assert.equal(copy.routeFor?.includes("synthetic"), false);
+    assert.equal(copy.avoidFor?.includes("production"), false);
+  }
+
+  const resolved = resolveModelRouter({
+    models: bridge,
+    registry: { find: () => ({ contextWindow: 1000000 }), hasConfiguredAuth: () => true },
+  });
+  assert.equal(checkEffort(resolved, bridge[0] ?? "", "high").verdict, "ok");
+  assert.equal(checkEffort(resolved, bridge[1] ?? "", "low").verdict, "ok");
+  assert.equal(checkEffort(resolved, bridge[1] ?? "", "off").verdict, "off-ladder");
+  assert.equal(planRoute({ resolution: resolved, requestedModel: bridge[0], requestedEffort: "high" }).kind, "proceed");
+  assert.equal(planRoute({ resolution: resolved, requestedModel: bridge[1], requestedEffort: "off" }).kind, "reject");
+  assert.equal(planRoute({ resolution: resolved, requestedModel: bridge[0], requestedEffort: "minimal", allowUnmeasuredEffort: false }).kind, "reject");
+  const implicit = planRoute({ resolution: resolved, requestedModel: bridge[1] });
+  assert.equal(implicit.kind, "proceed");
+  if (implicit.kind === "proceed") assert.equal(implicit.effort, "low");
+});
+
+test("bridge alias transformation remains active when a native alias exists", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "slate-bridge-alias-"));
+  const sourcePath = new URL("../extension/model-profiles.ts", import.meta.url);
+  const fixturePath = join(dir, "model-profiles.ts");
+  try {
+    const source = readFileSync(sourcePath, "utf8");
+    const fixture = source.replace(
+      'id: "anthropic/claude-sonnet-5",\n\t\t// The digest',
+      'id: "anthropic/claude-sonnet-5",\n\t\taliases: ["anthropic/claude-sonnet-5-fixture"],\n\t\t// The digest',
+    ).replace("\t\taliases: [],\n\t\t// First-party STANDARD tier", "\t\t// First-party STANDARD tier");
+    assert.notEqual(fixture, source, "the native alias fixture must be inserted");
+    writeFileSync(fixturePath, fixture);
+    const transformed = await import(`${pathToFileURL(fixturePath).href}?fixture=${Date.now()}`);
+    const bridge = transformed.findProfile("claude-bridge/claude-sonnet-5");
+    assert.deepEqual(bridge?.aliases, ["claude-bridge/claude-sonnet-5-fixture"]);
+    assert.equal(transformed.findProfile("claude-bridge/claude-sonnet-5-fixture"), bridge);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 
@@ -227,28 +287,7 @@ test("experimental provider profiles remain distinct and pass real router and ef
   assert.equal(dropped.candidates.some((candidate) => candidate.spec === unauthorized), false);
   assert.equal(droppedWarnings.some((warning) => warning.includes("not in pi's model registry")), true);
   assert.equal(droppedWarnings.some((warning) => warning.includes("no usable credentials configured")), true);
-  assert.equal(MODEL_PROFILES.filter((p) => experimental.includes(p.id)).length, 5);
-
-  const onlySpec = "claude-bridge/claude-sonnet-5";
-  const onlyProfile = findProfile(onlySpec);
-  assert.ok(onlyProfile);
-  const onlyWarnings: string[] = [];
-  const experimentalOnly = resolveModelRouter({
-    models: [onlySpec],
-    registry: {
-      find: (provider, id) => models[`${provider}/${id}`],
-      hasConfiguredAuth: () => true,
-    },
-  }, (warning) => onlyWarnings.push(warning));
-  assert.equal(experimentalOnly.cheapest, onlySpec);
-  assert.equal(experimentalOnly.cheapestNonPreferred, true);
-  assert.equal(onlyWarnings.some((warning) => warning.includes("default base model")), true);
-  const implicit = planRoute({ resolution: experimentalOnly });
-  assert.equal(implicit.kind, "proceed");
-  if (implicit.kind === "proceed") {
-    assert.equal(implicit.model, onlySpec);
-    assert.equal(implicit.effort, undefined, "an experimental profile has no measured effort to derive");
-  }
+  assert.equal(MODEL_PROFILES.filter((p) => experimental.includes(p.id)).length, 3);
 });
 
 test("registry costs survive absent, malformed, non-finite, and throwing fields", () => {
