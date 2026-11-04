@@ -34,6 +34,7 @@
  */
 
 import { join } from "node:path";
+import { registerTelemetry } from "./telemetry/orchestrator.ts";
 import { createChangeFolder } from "./artifact-names.ts";
 import { createChangeDirectory } from "./slate-files.ts";
 import { getAgentDir, SettingsManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -69,6 +70,10 @@ import {
 import { sanitizeWritingConfig } from "./writing.ts";
 
 export default function (pi: ExtensionAPI) {
+	const telemetry = registerTelemetry(pi, (provider, model) => {
+		const selected = logicalRuntime?.reverseMap({ provider, model });
+		return selected?.kind === "one" ? selected.logicalModel : undefined;
+	});
 	const store = new SlateStore(pi);
 	// One worker-extension resolver per session (AD41), reassigned every
 	// session_start below. The DOCTRINE consumer (registerSlateMode) reads it
@@ -129,6 +134,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		notifications.retire();
+		telemetry.sessionStart(ctx);
 		// Invalidate asynchronous recovery before replacing session-owned state.
 		const epoch = ++logicalSessionEpoch;
 		await manager.disposeAll();
@@ -236,10 +242,12 @@ export default function (pi: ExtensionAPI) {
 			store.sourceChange = source;
 			store.changeOwnerSessionId = ctx.sessionManager.getSessionId();
 			store.save();
+			telemetry.change("start", next, "allocation", undefined, source);
 		} catch (error) {
 			store.currentChange = undefined;
 			store.sourceChange = undefined;
 			store.changeOwnerSessionId = undefined;
+			telemetry.change("close", source, "allocation_failed");
 			const message = `slate: could not create an owned change folder — ${error instanceof Error ? error.message : String(error)}. No change is open.`;
 			if (ctx.hasUI) ctx.ui.notify(message, "warning");
 			else console.warn(message);
@@ -266,11 +274,12 @@ export default function (pi: ExtensionAPI) {
 	notifications.registerSettlement();
 
 	registerSlateMode(
-		pi,
+		telemetry.changeTools(pi),
 		store,
 		handoff,
 		() => manager.getConfig(),
 		() => resolveWorkerExtensionSet(),
 		() => logicalRuntime,
 	);
+	telemetry.registerShutdown();
 }

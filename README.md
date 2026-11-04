@@ -111,6 +111,12 @@ Slate reads optional home configuration and trusted project configuration. The [
 
 Slate attempts notifications after a main-session run settles or an extension dialog stays open for input. Terminal, desktop and bell delivery default to on. Phone push through ntfy, a notification server, needs home setup. Text defaults to the event type. See [notification setup](docs/configuration.md#notifications) for timing and limits.
 
+Slate telemetry records metadata through the OpenTelemetry API and `pi.events`
+(channel `slate.telemetry.v1`). A separate extension supplies the exporter.
+Set `SLATE_TELEMETRY=0` before starting pi to turn telemetry off.
+Telemetry excludes prompts, responses, tool data, and raw errors. Each failure kind
+is reported once on stderr. TUI sessions defer these reports until quit.
+
 ## Safety and trust
 
 Slate limits which extensions worker threads can load and which project settings it reads. [Safety and trust](docs/safety-and-trust.md) explains worker extensions, provider registrations, and the project trust boundary.

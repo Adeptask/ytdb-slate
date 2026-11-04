@@ -766,6 +766,7 @@ test("run-tests isolates Jiti coverage from a cache warmed by an earlier process
   writeFileSync(join(repo, "verification/link-peers.sh"), "#!/bin/sh\nexit 0\n");
 
   const packageLinks = [
+    ["node_modules/@opentelemetry/api", "node_modules/@opentelemetry/api"],
     ["node_modules/typescript", "node_modules/typescript"],
     ["node_modules/typebox", "node_modules/typebox"],
     ["node_modules/@earendil-works/pi-ai", "node_modules/@earendil-works/pi-ai"],
