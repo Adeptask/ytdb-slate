@@ -4,6 +4,7 @@ import { trace, metrics, type Span, type SpanOptions, type Context, type Attribu
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Telemetry, TELEMETRY_CHANNEL, FAILURE_KEY, reportFailure, flushFailures, type TelemetryEvent } from "../extension/telemetry/core.ts";
 import { registerTelemetry } from "../extension/telemetry/orchestrator.ts";
+import { DispatchTelemetry } from "../extension/telemetry/dispatch.ts";
 import { orchestratorCostUsd } from "../extension/state.ts";
 
 type Recorded = { name: string; parent?: Span; attributes: Attributes; started?: Date; events: Array<{ name: string; attributes?: Attributes; time?: Date }>; ends: number; time?: Date; status?: unknown };
@@ -107,6 +108,36 @@ test("every session boundary ends all open spans once before a later session sta
 		assert.ok(p.spans.every((s) => s.ends === 1), reason);
 		assert.equal(h.toolContext("inner"), undefined);
 	}
+});
+
+test("reload and session switches close completed claimed thread tools before exporter flush exactly once", async () => {
+	const p = provider(); p.register();
+	for (const reason of ["reload", "new", "resume", "fork"]) {
+		for (const outcome of ["succeeded", "failed", "cancelled"] as const) {
+			const h = host();
+			await h.emit("session_start");
+			await h.emit("tool_execution_start", { toolCallId: "outer", toolName: "codemode" });
+			await h.emit("tool_execution_start", { toolCallId: "inner", parentToolCallId: "outer", toolName: "thread" });
+			const tool = p.spans.at(-2)!;
+			const dispatch = h.dispatch("inner")!.claim();
+			dispatch.outcome(outcome); dispatch.finish("failed");
+			await h.emit("agent_end");
+			assert.equal(tool.ends, 0);
+			h.pi.on("session_shutdown", () => {
+				assert.equal(tool.ends, 1, reason);
+				assert.equal(tool.attributes["slate.outcome"], outcome);
+				assert.equal(h.dispatch("inner"), undefined);
+				assert.equal(h.toolSpan("inner"), undefined);
+			});
+			await h.emit("session_shutdown", { reason });
+			const snapshot = h.events.slice();
+			await h.emit("tool_execution_end", { toolCallId: "inner", isError: outcome !== "succeeded" });
+			await h.emit("session_shutdown", { reason });
+			assert.deepEqual(h.events, snapshot);
+			assert.equal(tool.ends, 1);
+		}
+	}
+	assert.ok(p.spans.every((span) => span.ends === 1));
 });
 
 test("persisted session billing includes compaction, summary, usage and tool usage exactly once", async () => {
@@ -454,4 +485,72 @@ test("event identifiers distinguish extension instances across reloads", () => {
 	const second = new Telemetry((event) => { events.push(event); });
 	first.start("run"); second.start("run");
 	assert.notEqual(events[0]!.id, events[1]!.id);
+});
+
+
+test("worker names, parents and duration labels share the versioned event model", () => {
+	const p = provider(); p.register();
+	const events: TelemetryEvent[] = [];
+	const telemetry = new Telemetry((e) => events.push(e));
+	const parent = telemetry.start("dispatch", { "slate.session.id": "session", "slate.change": "change", "slate.track": "6" });
+	const attempt = telemetry.start("worker_attempt", { ...parent!.attributes, "slate.attempt.index": 0, "slate.logical_model": "logical", "slate.thread.type": "general" }, parent);
+	const turn = telemetry.start("worker_turn", { ...attempt!.attributes, "slate.turn.index": 2 }, attempt);
+	const tool = telemetry.start("worker_tool", { ...turn!.attributes, "slate.tool.call_id": "id", "slate.tool.name": "read" }, turn);
+	for (const span of [tool, turn, attempt, parent]) telemetry.end(span);
+	assert.deepEqual(p.spans.map((s) => s.name), ["slate.dispatch", "slate.worker.attempt", "slate.worker.turn", "slate.worker.tool"]);
+	for (let i = 1; i < p.spans.length; i++) assert.equal(p.spans[i]!.parent, p.spans[i - 1]);
+	assert.ok(p.spans.every((s) => s.ends === 1));
+	assert.ok(events.every((e) => e.version === 1 && Object.isFrozen(e.attributes)));
+	assert.equal(events.find((e) => e.kind === "worker_tool")!.attributes["slate.attempt.index"], 0);
+	assert.equal(p.measurements.length, 4);
+	for (const m of p.measurements) {
+		assert.equal(m.name, "slate.duration");
+		assert.ok(Object.keys(m.labels).every((key) => ["slate.kind", "slate.logical_model", "slate.thread.type"].includes(key)));
+	}
+});
+
+test("nested orchestrator tools end on their own results after agent_end", async () => {
+	const h = host(), p = provider(); p.register();
+	await h.emit("session_start"); await h.emit("turn_start", { turnIndex: 0 });
+	await h.emit("tool_execution_start", { toolCallId: "outer", toolName: "codemode" });
+	await h.emit("tool_execution_start", { toolCallId: "inner", parentToolCallId: "outer", toolName: "read" });
+	const inner = p.spans.find((s) => s.attributes["slate.tool.call_id"] === "inner")!;
+	await h.emit("turn_end"); await h.emit("agent_end"); await h.emit("agent_end");
+	assert.equal(inner.ends, 0);
+	await h.emit("tool_execution_end", { toolCallId: "inner", isError: true });
+	assert.equal(inner.ends, 1); assert.equal(inner.attributes["slate.outcome"], "failed");
+	await h.emit("tool_execution_end", { toolCallId: "inner", isError: false });
+	await h.emit("session_shutdown", { reason: "quit" });
+	assert.equal(inner.ends, 1);
+	assert.equal(h.toolSpan("inner"), undefined);
+});
+
+test("final teardown closes nested tools that never publish a result", async () => {
+	const h = host(), p = provider(); p.register();
+	await h.emit("tool_execution_start", { toolCallId: "outer", toolName: "codemode" });
+	await h.emit("tool_execution_start", { toolCallId: "inner", parentToolCallId: "outer", toolName: "read" });
+	await h.emit("agent_end");
+	assert.equal(p.spans.find((s) => s.attributes["slate.tool.call_id"] === "inner")!.ends, 0);
+	await h.emit("session_shutdown", { reason: "quit" });
+	assert.ok(p.spans.every((s) => s.ends === 1));
+});
+
+test("worker sink failures report once per kind and TUI reporting waits for quit", async (t) => {
+	const h = host(), p = provider(); p.register(); h.ctx.mode = "tui";
+	await h.emit("session_start");
+	const output: string[] = [];
+	t.mock.method(process.stderr, "write", ((s: string) => { output.push(s); return true; }) as typeof process.stderr.write);
+	p.failMetrics(); p.failSpans();
+	for (let i = 0; i < 2; i++) {
+		const dispatch = new DispatchTelemetry(h.telemetry).claim();
+		let listener!: (event: any) => void;
+		dispatch.worker({ sessionManager: { appendCustomEntry() {} }, subscribe(fn) { listener = fn; return () => {}; } });
+		listener({ type: "turn_start" }); listener({ type: "turn_end" });
+		dispatch.finish("succeeded");
+	}
+	assert.equal(output.length, 0);
+	await h.emit("session_shutdown", { reason: "reload" }); assert.equal(output.length, 0);
+	await h.emit("session_shutdown", { reason: "quit" });
+	assert.equal(output.filter((s) => s.includes("spans failed")).length, 1);
+	assert.equal(output.filter((s) => s.includes("metrics failed")).length, 1);
 });

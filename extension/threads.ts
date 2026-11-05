@@ -1115,6 +1115,7 @@ export class ThreadManager {
 						contextWindow: recoverySession.model?.contextWindow,
 					});
 			if (initialAttempt.kind === "retry-exhausted") {
+				opts.telemetry?.cutoff();
 				const retainedToolResults = recoverySession.messages.slice(messagesBefore).filter((message) => (message as { role?: unknown }).role === "toolResult");
 				const recoveryAttempts = new Set<WorkerAssistantMsg>();
 				if (outcome.final !== undefined) recoveryAttempts.add(outcome.final);

@@ -13,8 +13,8 @@ export function registerTelemetry(pi: ExtensionAPI, logicalModel?: (provider: st
 	const tools = new Map<string, TelemetrySpan | undefined>();
 	const dispatches = new Map<string, DispatchTelemetry>();
 	const toolResults = new Map<string, string>();
-	const finishThreadTool = (id: string) => {
-		const outcome = toolResults.get(id);
+	const finishThreadTool = (id: string, final = false) => {
+		const outcome = toolResults.get(id) ?? (final ? dispatches.get(id)?.finishedOutcome ?? "unknown" : undefined);
 		if (dispatches.get(id)?.pending || outcome === undefined) return;
 		telemetry.end(tools.get(id), { "slate.outcome": outcome });
 		tools.delete(id);
@@ -77,14 +77,18 @@ export function registerTelemetry(pi: ExtensionAPI, logicalModel?: (provider: st
 		telemetry.end(span, attributes, call?.span ? call.ended : undefined, !!call?.span);
 	};
 	const scan = (ctx: ExtensionContext) => { for (const entry of ctx.sessionManager.getEntries()) account(entry); };
-	const finish = (ctx: ExtensionContext, outcome: string) => {
+	const finish = (ctx: ExtensionContext, outcome: string, teardown = false) => {
 		telemetry.guard("observer", () => scan(ctx));
 		for (const [id, dispatch] of dispatches) {
 			dispatch.rejectUnclaimed();
-			if (!dispatch.claimed) dispatches.delete(id);
+			if (!dispatch.claimed) {
+				telemetry.end(tools.get(id), { "slate.outcome": "rejected" });
+				tools.delete(id);
+				dispatches.delete(id);
+			}
 		}
 		for (const [id, span] of [...tools].reverse()) {
-			if (dispatches.has(id)) continue;
+			if (dispatches.has(id) || (!teardown && span?.attributes["slate.tool.parent_call_id"])) continue;
 			telemetry.end(span, { "slate.outcome": outcome });
 			tools.delete(id);
 		}
@@ -167,8 +171,12 @@ export function registerTelemetry(pi: ExtensionAPI, logicalModel?: (provider: st
 			pi.on("session_shutdown", (event, ctx) => {
 				telemetry.mode = ctx.mode;
 				telemetry.guard("observer", () => {
-					if (event.reason === "quit") for (const dispatch of dispatches.values()) dispatch.rejectUnadmitted();
-					finish(ctx, event.reason);
+					for (const [id, dispatch] of dispatches) {
+						dispatch.closeWorker();
+						if (event.reason === "quit") dispatch.rejectUnadmitted();
+						if (event.reason === "quit" || dispatch.finishedOutcome !== undefined) finishThreadTool(id, true);
+					}
+					finish(ctx, event.reason, true);
 				});
 				if (event.reason === "quit") flushFailures();
 			});

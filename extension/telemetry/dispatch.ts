@@ -1,6 +1,7 @@
-import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { EpisodeRecord } from "../state.ts";
 import { Telemetry, type TelemetryAttributes, type TelemetrySpan } from "./core.ts";
+import { WorkerTelemetry } from "./worker.ts";
 
 export type DispatchOutcome = "rejected" | "cancelled before start" | "aborted" | "cancelled" | "failed" | "succeeded" | "stored but failed";
 export const WORKER_IDENTITY_TYPE = "slate-worker-identity";
@@ -14,6 +15,8 @@ export class DispatchTelemetry {
 	private attributes: TelemetryAttributes = {};
 	private identity?: Record<string, unknown>;
 	private span?: TelemetrySpan;
+	private observer?: WorkerTelemetry;
+	private finalOutcome?: DispatchOutcome;
 	constructor(privateTelemetry: Telemetry, parent?: TelemetrySpan, privateOnFinish?: (outcome: DispatchOutcome) => void) {
 		this.onFinish = privateOnFinish;
 		this.telemetry = privateTelemetry;
@@ -24,6 +27,7 @@ export class DispatchTelemetry {
 	claim(): this { this.owner = true; return this; }
 	get claimed(): boolean { return this.owner; }
 	get pending(): boolean { return this.owner && !this.ended; }
+	get finishedOutcome(): DispatchOutcome | undefined { return this.finalOutcome; }
 	/** Fallback covers pre-execute rejection and execute-time validation before claim(). */
 	rejectUnclaimed(): void { if (!this.owner) this.finish("rejected"); }
 	/** Final quit closes admission work that manager teardown cannot join. */
@@ -40,11 +44,18 @@ export class DispatchTelemetry {
 				threadId: data.threadId, episodeId: data.episodeId, threadType: data.type, logicalModel: data.model };
 		});
 	}
-	worker(session: { sessionManager: { appendCustomEntry(type: string, data: unknown): unknown } }): void {
+	worker(session: Pick<AgentSession, "subscribe"> & { model?: { provider: string; id: string }; sessionManager: { appendCustomEntry(type: string, data: unknown): unknown } }): void {
+		this.telemetry.guard("observer", () => {
+			if (!this.ended && !this.observer) this.observer = new WorkerTelemetry(this.telemetry, this.span, {
+				...this.attributes, "gen_ai.provider.name": session.model?.provider, "gen_ai.request.model": session.model?.id,
+			}, session);
+		});
 		this.telemetry.guard("observer", () => {
 			if (this.identity) { const identity = this.identity; this.identity = undefined; session.sessionManager.appendCustomEntry(WORKER_IDENTITY_TYPE, identity); }
 		});
 	}
+	cutoff(): void { this.observer?.cutoff(); }
+	closeWorker(): void { this.observer?.finish(this.finalOutcome ?? "unknown"); }
 	route(model?: string, effort?: string): void {
 		this.telemetry.guard("observer", () => {
 			Object.assign(this.attributes, { "slate.dispatch.final_model": model, "slate.dispatch.final_effort": effort });
@@ -62,6 +73,8 @@ export class DispatchTelemetry {
 	finish(fallback: DispatchOutcome): void {
 		if (this.ended) return;
 		this.ended = true;
+		this.finalOutcome = (this.result?.["slate.outcome"] as DispatchOutcome | undefined) ?? fallback;
+		this.closeWorker();
 		this.telemetry.guard("observer", () => {
 			// Dispatch totals are span facts, not billed-call metrics.
 			this.telemetry.end(this.span, { ...this.attributes,

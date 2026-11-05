@@ -41,7 +41,7 @@ function fixture(t: TestContext, mode = "ok") {
 	let validation = 0;
 	const base = createLogicalRuntime({ trusted: true, projectConfig: { router: { models: {
 		include: [], add: [{ model: "fixture", capabilityRating: 50, effort: "off", costRating: 50,
-			preferredProvider: "test", providers: { test: "worker" }, guidelines: [], cautions: [] }],
+			preferredProvider: "test", providers: { test: "worker", ...(mode === "recovery" ? { backup: "worker-2" } : {}) }, guidelines: [], cautions: [] }],
 	} } } });
 	const entered = deferred(), release = deferred();
 	const runtime = Object.freeze({ ...base, async validateRoute() {
@@ -53,7 +53,8 @@ function fixture(t: TestContext, mode = "ok") {
 	let manager = new ThreadManager(store, { maxConcurrent: 2 }, undefined, runtime);
 	if (mode === "busy") (manager as any).logicalRuntime = { ...runtime, ownership: { acquire: () => ({ kind: "busy" }) } };
 	const parent = SessionManager.create(root, join(root, "parent"));
-	const ctx = { cwd: root, mode: "rpc", hasUI: false, sessionManager: parent } as unknown as ExtensionContext;
+	const ctx = { cwd: root, mode: "rpc", hasUI: false, sessionManager: parent,
+		modelRegistry: { find: (provider: string, id: string) => ({ provider, id, api: "openai-responses" }) } } as unknown as ExtensionContext;
 	observer?.sessionStart(ctx);
 	if (observer) {
 		registerSlateTools(pi, store, () => manager, observer.dispatch);
@@ -68,9 +69,12 @@ function fixture(t: TestContext, mode = "ok") {
 		const listeners = new Set<(event: any) => void>();
 		const sessionManager = SessionManager.create(root, join(root, "workers"));
 		sessions.push(sessionManager);
+		let prompts = 0;
+		const send = (event: any) => { for (const fn of listeners) fn(event); };
 		const session = { sessionManager, messages: [] as any[], model: { provider: "test", id: "worker" }, thinkingLevel: "off",
 			subscribe(fn: (event: any) => void) { listeners.add(fn); return () => listeners.delete(fn); },
 			async sendCustomMessage() {}, setThinkingLevel() {},
+			async setModel(model: { provider: string; id: string }) { session.model = model; },
 			async abort() { if (mode === "shutdown") { controller.abort(); release.resolve(); } },
 			closeManagedOperations() {}, async settleManagedOperations() {},
 			async shutdownWorker() {
@@ -78,16 +82,27 @@ function fixture(t: TestContext, mode = "ok") {
 				if (mode.startsWith("cleanup")) throw Error("cleanup");
 			},
 			async prompt() {
+				prompts++;
+				send({ type: "turn_start" });
+				send({ type: "tool_execution_start", toolCallId: "outer", toolName: "codemode" });
+				send({ type: "tool_execution_start", toolCallId: "inner", parentToolCallId: "outer", toolName: "read" });
 				sessionManager.appendMessage({ role: "user", content: "private task", timestamp: 1 });
 				if (mode === "parallel" || mode === "shutdown") { entered.resolve(); await release.promise; }
 				if (mode === "shutdown" || mode === "cancel" || mode === "cancel-save") { controller.abort(); throw Error("cancelled"); }
 				if (mode.includes("storage")) writeFileSync(join(root, ".pi"), "block episode");
 				if (mode.startsWith("empty")) throw Error("empty failure");
 				const message = { role: "assistant", provider: "test", model: "worker", api: "openai-responses",
-					stopReason: mode === "failed" ? "error" : "stop", errorMessage: mode === "failed" ? "private error" : undefined,
+					stopReason: mode === "failed" || (mode === "recovery" && prompts === 1) ? "error" : "stop",
+					errorMessage: mode === "recovery" ? "temporary timeout" : mode === "failed" ? "private error" : undefined,
 					content: [{ type: "text", text: "private result" }], timestamp: 2,
 					usage: { input: 11, output: 7, cacheRead: 3, cacheWrite: 2, totalTokens: 23, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.3 } } };
 				session.messages.push(message); sessionManager.appendMessage(message as any);
+				if (mode === "recovery" && prompts === 1) {
+					send({ type: "agent_end", willRetry: true });
+					send({ type: "auto_retry_start", attempt: 1, maxAttempts: 1, errorMessage: "temporary timeout" });
+					send({ type: "agent_end", willRetry: false });
+					send({ type: "auto_retry_end", success: false, attempt: 1 });
+				}
 				for (const fn of listeners) {
 					fn({ type: "message_end", message });
 					fn({ type: "compaction_end", result: { usage: { input: 5, output: 4, cost: { total: 0.2 } } }, aborted: false });
@@ -96,6 +111,12 @@ function fixture(t: TestContext, mode = "ok") {
 		};
 		if (mode === "identity-failure") (sessionManager as any).appendCustomEntry = () => { throw Error("identity"); };
 		args.observeSession(session);
+		send({ type: "turn_start" });
+		if (["ok", "parallel", "recovery"].includes(mode)) {
+			send({ type: "tool_execution_start", toolCallId: "startup", toolName: "read" });
+			send({ type: "tool_execution_end", toolCallId: "startup", isError: false });
+		}
+		send({ type: "turn_end" });
 		if (mode === "startup-cancel") {
 			controller.abort(); args.observeStartupFailure("startup"); throw Error("startup");
 		}
@@ -113,7 +134,7 @@ function fixture(t: TestContext, mode = "ok") {
 		});
 	}
 	const emit = async (name: string, event: any) => { for (const fn of handlers.get(name) ?? []) await fn(event, ctx); };
-	return { root, get store() { return store; }, get manager() { return manager; }, observer, ctx, events, tools, sessions, controller, entered, release,
+	return { root, pi, get store() { return store; }, get manager() { return manager; }, observer, ctx, events, tools, sessions, controller, entered, release,
 		opens: () => opens, emit,
 		async call(id = "call", params: Record<string, unknown> = {}, parentToolCallId?: string) {
 			await emit("tool_execution_start", { toolCallId: id, toolName: "thread", parentToolCallId });
@@ -151,6 +172,10 @@ test("real dispatch outcome paths agree with local charges and stored episodes",
 			assert.equal(attrs["slate.dispatch.final_model"], episode.model);
 		}
 		assert.equal(attrs["slate.change"], undefined); assert.equal(attrs["slate.track"], undefined);
+		const workerStarts = h.events.filter((e) => e.phase === "start" && e.kind.startsWith("worker_"));
+		for (const start of workerStarts) assert.equal(h.events.filter((e) => e.phase === "end" && e.id === start.id).length, 1, mode);
+		const attempt = h.events.find((e) => e.phase === "end" && e.kind === "worker_attempt");
+		if (attempt) assert.equal(attempt.attributes["slate.outcome"], outcome, mode);
 		await h.manager.disposeAll();
 	}
 });
@@ -379,4 +404,66 @@ test("a change switched during admission rejects without borrowing the newer cha
 	await assert.rejects(action, /changed during action validation/);
 	assert.equal(h.opens(), 0); assert.equal(h.outcomes().length, 1);
 	assert.equal(h.outcomes()[0]!.attributes["slate.change"], undefined);
+});
+
+
+test("index quit ends claimed thread parents before exporter shutdown without a Pi result", { timeout: 5000 }, async (t) => {
+	const h = fixture(t, "shutdown");
+	await h.emit("agent_start", {});
+	await h.emit("tool_execution_start", { toolCallId: "call", toolName: "thread" });
+	const action = h.tools.get("thread").execute("call", { type: "general", task: "private task", model: "fixture", reason: "private reason" }, h.controller.signal, undefined, h.ctx);
+	const settled = Promise.allSettled([action]);
+	await h.entered.promise;
+	let checked = false;
+	h.pi.on("session_shutdown", () => {
+		checked = true;
+		const ends = h.events.filter((e) => e.phase === "end");
+		const tool = ends.find((e) => e.kind === "tool" && e.attributes["slate.tool.call_id"] === "call");
+		assert.ok(tool);
+		assert.equal(tool.attributes["slate.outcome"], "cancelled");
+		assert.ok(h.events.indexOf(tool) > h.events.indexOf(h.outcomes()[0]!));
+		for (const start of h.events.filter((e) => e.phase === "start")) assert.equal(ends.filter((e) => e.id === start.id).length, 1);
+	});
+	await h.emit("session_shutdown", { reason: "quit" });
+	assert.ok(checked);
+	await settled;
+	const snapshot = h.events.slice();
+	await h.emit("tool_execution_end", { toolCallId: "call", isError: false });
+	await h.emit("session_shutdown", { reason: "quit" });
+	assert.deepEqual(h.events, snapshot);
+});
+
+test("real recovery closes attempt zero before recovery turns and keeps old handles", { timeout: 5000 }, async (t) => {
+	const h = fixture(t, "recovery");
+	const result = await h.call();
+	assert.equal(result.details.status, "ok");
+	const attempts = h.events.filter((e) => e.kind === "worker_attempt" && e.phase === "end");
+	assert.equal(attempts.length, 1);
+	assert.equal(attempts[0]!.attributes["slate.outcome"], "failed");
+	assert.equal(h.events.filter((e) => e.kind === "worker_turn" && e.phase === "start").length, 2, "startup and initial prompt only");
+	assert.equal(h.events.filter((e) => e.kind === "worker_tool" && e.phase === "start").length, 3);
+	for (const start of h.events.filter((e) => e.kind.startsWith("worker_") && e.phase === "start")) {
+		assert.equal(h.events.filter((e) => e.id === start.id && e.phase === "end").length, 1);
+	}
+	assert.ok(h.events.indexOf(attempts[0]!) < h.events.indexOf(h.outcomes()[0]!));
+});
+
+test("parallel workers with identical tool ids keep distinct attempt and turn parents", { timeout: 5000 }, async (t) => {
+	const h = fixture(t, "parallel");
+	const a = h.call("a"), b = h.call("b");
+	await h.entered.promise;
+	while (h.opens() < 2) await new Promise<void>((done) => setImmediate(done));
+	h.release.resolve(); await Promise.all([a, b]);
+	const attempts = h.events.filter((e) => e.kind === "worker_attempt" && e.phase === "start");
+	assert.equal(attempts.length, 2); assert.notEqual(attempts[0]!.parentId, attempts[1]!.parentId);
+	const starts = h.events.filter((e) => e.phase === "start");
+	for (const tool of starts.filter((e) => e.kind === "worker_tool")) {
+		const parent = starts.find((e) => e.id === tool.parentId)!;
+		assert.ok(parent);
+		assert.equal(parent.attributes["slate.thread.id"], tool.attributes["slate.thread.id"]);
+		assert.equal(parent.kind, tool.attributes["slate.tool.parent_call_id"] ? "worker_tool" : "worker_turn");
+	}
+	for (const turn of starts.filter((e) => e.kind === "worker_turn")) {
+		assert.equal(starts.find((e) => e.id === turn.parentId)!.attributes["slate.thread.id"], turn.attributes["slate.thread.id"]);
+	}
 });
