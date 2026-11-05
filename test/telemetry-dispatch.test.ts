@@ -11,6 +11,8 @@ import { registerSlateTools } from "../extension/tools.ts";
 import { registerTelemetry } from "../extension/telemetry/orchestrator.ts";
 import { FAILURE_KEY, type TelemetryEvent } from "../extension/telemetry/core.ts";
 import { WORKER_IDENTITY_TYPE } from "../extension/telemetry/dispatch.ts";
+import { normalizeContext } from "@earendil-works/pi-ai/compat";
+import { installWorkerRequestContract, type WorkerSession } from "../extension/worker.ts";
 import { bindFakeWorkerRequest } from "./worker-request-contract-fixture.ts";
 import extension from "../extension/index.ts";
 
@@ -71,7 +73,7 @@ function fixture(t: TestContext, mode = "ok") {
 		sessions.push(sessionManager);
 		let prompts = 0;
 		const send = (event: any) => { for (const fn of listeners) fn(event); };
-		const session = { sessionManager, messages: [] as any[], model: { provider: "test", id: "worker" }, thinkingLevel: "off",
+		const session = { agent: { streamFunction: (() => ({})) as unknown as WorkerSession["agent"]["streamFunction"] }, sessionManager, messages: [] as any[], model: { provider: "test", id: "worker" }, thinkingLevel: "off",
 			subscribe(fn: (event: any) => void) { listeners.add(fn); return () => listeners.delete(fn); },
 			async sendCustomMessage() {}, setThinkingLevel() {},
 			async setModel(model: { provider: string; id: string }) { session.model = model; },
@@ -84,6 +86,13 @@ function fixture(t: TestContext, mode = "ok") {
 			async prompt() {
 				prompts++;
 				send({ type: "turn_start" });
+				if (mode === "billed-cancel") {
+					session.agent.streamFunction(session.model as Parameters<WorkerSession["agent"]["streamFunction"]>[0], normalizeContext({ messages: [] }));
+					const message = { role: "assistant", content: [], stopReason: "aborted",
+						usage: { input: 11, output: 7, cacheRead: 3, cacheWrite: 2, cost: { total: 0.3 } } };
+					send({ type: "message_end", message });
+					controller.abort(); throw Error("cancelled");
+				}
 				send({ type: "tool_execution_start", toolCallId: "outer", toolName: "codemode" });
 				send({ type: "tool_execution_start", toolCallId: "inner", parentToolCallId: "outer", toolName: "read" });
 				sessionManager.appendMessage({ role: "user", content: "private task", timestamp: 1 });
@@ -110,6 +119,7 @@ function fixture(t: TestContext, mode = "ok") {
 			},
 		};
 		if (mode === "identity-failure") (sessionManager as any).appendCustomEntry = () => { throw Error("identity"); };
+		if (mode === "billed-cancel") installWorkerRequestContract(session as unknown as WorkerSession, args.requestContract);
 		args.observeSession(session);
 		send({ type: "turn_start" });
 		if (["ok", "parallel", "recovery"].includes(mode)) {
@@ -190,6 +200,22 @@ test("rejected wrapper arguments and pi pre-execute rejection have one outer fal
 	assert.throws(() => h.tools.get("thread").prepareArguments({ trackNumber: "0" }));
 	await h.emit("tool_execution_end", { toolCallId: "pi-refused", isError: true });
 	assert.equal(h.outcomes().length, 4); assert.equal(h.opens(), 0);
+});
+
+test("billed cancellation without facts emits per-call usage without changing Slate accounting", async (t) => {
+	const h = fixture(t, "billed-cancel");
+	await h.call().catch(() => {});
+	assert.equal(h.outcomes()[0]!.attributes["slate.outcome"], "cancelled");
+	assert.equal(h.outcomes()[0]!.attributes["slate.episode.recorded"], "false");
+	assert.equal(h.store.episodes.size, 0);
+	assert.equal(h.store.workerCostUsd, 0);
+	const calls = h.events.filter((e) => e.kind === "worker_model_call" && e.phase === "usage");
+	assert.equal(calls.length, 1);
+	assert.partialDeepStrictEqual(calls[0]!.attributes, {
+		"gen_ai.usage.input_tokens": 11, "gen_ai.usage.output_tokens": 7,
+		"gen_ai.usage.cache_read.input_tokens": 3, "gen_ai.usage.cache_creation.input_tokens": 2,
+		"slate.gen_ai.cost.usd": 0.3,
+	});
 });
 
 test("cancelled before start retains no episode", async (t) => {

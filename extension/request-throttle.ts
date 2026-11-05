@@ -194,7 +194,7 @@ export interface RequestThrottle {
 	 * Wait for capacity, then run one synchronous local handoff. The admission
 	 * timestamp is committed only after the handoff returns successfully.
 	 */
-	accept<T>(model: unknown, signal: AbortSignal | undefined, handoff: () => T): Promise<Awaited<T>>;
+	accept<T>(model: unknown, signal: AbortSignal | undefined, handoff: () => T, onWait?: () => void): Promise<Awaited<T>>;
 	/** Retained state, for tests and for the bounded-state claim. */
 	inspect(): { models: number; timestamps: number; waiters: number };
 }
@@ -304,7 +304,7 @@ export function createRequestThrottle(
 		});
 	};
 
-	const accept = async <T>(model: unknown, signal: AbortSignal | undefined, handoff: () => T): Promise<Awaited<T>> => {
+	const accept = async <T>(model: unknown, signal: AbortSignal | undefined, handoff: () => T, onWait?: () => void): Promise<Awaited<T>> => {
 		const rejectIfAborted = () => {
 			if (signal?.aborted === true) {
 				throw new RequestThrottleAbort("Request was aborted before the slate request throttle admitted it. The request was not sent.");
@@ -338,6 +338,7 @@ export function createRequestThrottle(
 				armExpiry(key, entry);
 				return value as Awaited<T>;
 			}
+			onWait?.();
 			await waitOnce(key, entry, signal);
 			waited = true;
 		}

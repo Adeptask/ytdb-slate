@@ -509,6 +509,22 @@ test("worker names, parents and duration labels share the versioned event model"
 	}
 });
 
+test("worker model names, admission events and request indexes map to spans without metric labels", () => {
+	const p = provider(); p.register();
+	const telemetry = new Telemetry(() => {});
+	const turn = telemetry.start("worker_turn");
+	telemetry.admission(undefined, "wait");
+	telemetry.admission(turn, "wait"); telemetry.admission(turn, "refused");
+	const call = telemetry.start("worker_model_call", { "slate.request.index": 0, "slate.attempt.index": 0 }, turn);
+	const compaction = telemetry.start("worker_compaction", {}, turn);
+	telemetry.end(call); telemetry.end(compaction); telemetry.end(turn);
+	assert.deepEqual(p.spans.map((s) => s.name), ["slate.worker.turn", "slate.worker.model_call", "slate.worker.compaction"]);
+	assert.deepEqual(p.spans[0]!.events.map((e) => e.name), ["slate.request.wait", "slate.request.refused"]);
+	assert.equal(p.spans[1]!.parent, p.spans[0]);
+	assert.equal(p.spans[1]!.attributes["slate.request.index"], 0);
+	assert.ok(p.measurements.every((p) => !("slate.request.index" in p.labels)));
+});
+
 test("nested orchestrator tools end on their own results after agent_end", async () => {
 	const h = host(), p = provider(); p.register();
 	await h.emit("session_start"); await h.emit("turn_start", { turnIndex: 0 });

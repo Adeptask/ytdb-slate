@@ -50,6 +50,7 @@ import { loadPromptDocs } from "./prompt-docs.ts";
 import type { LogicalModelEffort } from "./logical-model-definitions.ts";
 import type { RecoveryCandidate } from "./logical-model-recovery.ts";
 import { RequestThrottleAbort, type RequestThrottle } from "./request-throttle.ts";
+import { requestObservation, requestHandoff } from "./telemetry/request.ts";
 import { createWorkerReminderRuntime } from "./worker-reminder.ts";
 import { createWorkerNestedLifecycle } from "./worker-nested-lifecycle.ts";
 import { describeSpecDefect, splitModelSpec, type SlateConfig, type ThreadType } from "./state.ts";
@@ -336,22 +337,25 @@ export function installRequestThrottle(
 	contract?: WorkerRequestContract,
 ): void {
 	const previous: WorkerStreamFunction = session.agent.streamFunction;
-	const handoff = (model: Parameters<WorkerStreamFunction>[0], context: Parameters<WorkerStreamFunction>[1], options: Parameters<WorkerStreamFunction>[2]) =>
-		contract === undefined
-			? previous(model, context, options)
-			: contract.accept(model, options?.reasoning, options?.signal, () => previous(model, context, options));
 	session.agent.streamFunction = (model, context, options) => {
+		const request = requestObservation(session);
+		const handoff = () => {
+			const send = () => requestHandoff(request, model, () => previous(model, context, options));
+			return contract === undefined ? send() : contract.accept(model, options?.reasoning, options?.signal, send);
+		};
 		const requestSignal = options?.signal;
 		const waitSignal = contract === undefined
 			? requestSignal
 			: requestSignal === undefined
 				? contract.invalidationSignal
 				: AbortSignal.any([requestSignal, contract.invalidationSignal]);
-		const pending = throttle.accept(model, waitSignal, () => handoff(model, context, options));
+		const pending = throttle.accept(model, waitSignal, handoff, request?.wait);
 		if (contract === undefined) return pending;
 		return pending.catch((error: unknown) => {
+			if (requestSignal?.aborted !== true && contract.refusal() !== undefined) request?.refused();
 			// Lifecycle invalidation owns this wake-up. Keep Pi's caller abort distinct.
-			if (error instanceof RequestThrottleAbort && contract.invalidationSignal.aborted && requestSignal?.aborted !== true) {
+			if (error instanceof RequestThrottleAbort && contract?.invalidationSignal.aborted && requestSignal?.aborted !== true) {
+				request?.refused();
 				throw new Error(WORKER_REQUEST_CONTRACT_ERROR);
 			}
 			throw error;
@@ -361,8 +365,16 @@ export function installRequestThrottle(
 
 export function installWorkerRequestContract(session: WorkerSession, contract: WorkerRequestContract): void {
 	const previous: WorkerStreamFunction = session.agent.streamFunction;
-	session.agent.streamFunction = (model, context, options) =>
-		contract.accept(model, options?.reasoning, options?.signal, () => previous(model, context, options));
+	session.agent.streamFunction = (model, context, options) => {
+		const request = requestObservation(session);
+		try {
+			return contract.accept(model, options?.reasoning, options?.signal,
+				() => requestHandoff(request, model, () => previous(model, context, options)));
+		} catch (error) {
+			if (options?.signal?.aborted !== true && contract.refusal() !== undefined) request?.refused();
+			throw error;
+		}
+	};
 }
 
 /**

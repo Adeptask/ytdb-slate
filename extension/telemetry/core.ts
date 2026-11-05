@@ -26,7 +26,7 @@ export function flushFailures(): void {
 	state.pending.clear();
 }
 
-export type TelemetryKind = "session" | "run" | "turn" | "model" | "tool" | "dispatch" | "worker_attempt" | "worker_turn" | "worker_tool";
+export type TelemetryKind = "session" | "run" | "turn" | "model" | "tool" | "dispatch" | "worker_attempt" | "worker_turn" | "worker_tool" | "worker_model_call" | "worker_compaction";
 export type TelemetryAttributes = Partial<Record<
 	"slate.session.id" | "slate.session.instance_id" | "slate.change" | "slate.change.previous" | "slate.change.source" |
 	"slate.tool.call_id" | "slate.tool.parent_call_id" | "slate.tool.name" |
@@ -35,13 +35,13 @@ export type TelemetryAttributes = Partial<Record<
 	"slate.kind" | "slate.outcome" | "slate.logical_model" | "slate.thread.type" |
 	"gen_ai.provider.name" | "gen_ai.request.model" | "gen_ai.response.model", string
 >> & Partial<Record<
-	"slate.attempt.index" | "slate.turn.index" | "gen_ai.usage.input_tokens" | "gen_ai.usage.output_tokens" |
+	"slate.attempt.index" | "slate.request.index" | "slate.turn.index" | "gen_ai.usage.input_tokens" | "gen_ai.usage.output_tokens" |
 	"gen_ai.usage.cache_read.input_tokens" | "gen_ai.usage.cache_creation.input_tokens" |
 	"gen_ai.usage.reasoning.output_tokens" | "slate.gen_ai.cost.usd", number
 >>;
 export type TelemetryEvent = Readonly<{
 	version: 1;
-	phase: "start" | "end" | "usage" | "change";
+	phase: "start" | "end" | "usage" | "change" | "admission";
 	kind: TelemetryKind;
 	id: string;
 	parentId?: string;
@@ -55,7 +55,7 @@ const attributeKeys = new Set([
 	"slate.tool.call_id", "slate.tool.parent_call_id", "slate.tool.name", "slate.kind",
 	"slate.track", "slate.thread.id", "slate.episode.id", "slate.episode.recorded",
 	"slate.dispatch.requested_model", "slate.dispatch.final_model", "slate.dispatch.requested_effort", "slate.dispatch.final_effort",
-	"slate.outcome", "slate.logical_model", "slate.thread.type", "slate.turn.index", "slate.attempt.index",
+	"slate.outcome", "slate.logical_model", "slate.thread.type", "slate.turn.index", "slate.attempt.index", "slate.request.index",
 	"gen_ai.provider.name", "gen_ai.request.model", "gen_ai.response.model",
 	"gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens", "gen_ai.usage.cache_read.input_tokens",
 	"gen_ai.usage.cache_creation.input_tokens", "gen_ai.usage.reasoning.output_tokens", "slate.gen_ai.cost.usd",
@@ -97,6 +97,10 @@ export class Telemetry {
 		if (!handle) return;
 		this.record({ version: 1, phase: "usage", kind: handle.kind, id: handle.id, time: Date.now(), attributes: { ...handle.attributes, ...attributes } });
 	}
+	admission(handle: TelemetrySpan | undefined, outcome: "wait" | "refused"): void {
+		if (handle) this.record({ version: 1, phase: "admission", kind: handle.kind, id: handle.id,
+			time: Date.now(), attributes: { "slate.outcome": outcome } });
+	}
 	/** Startup metadata and later spans share this session-instance identity. */
 	sessionIdentity(sessionId: string): string { return `${this.namespace}/session/${sessionId}`; }
 	change(handle: TelemetrySpan | undefined, attributes: TelemetryAttributes, time = Date.now()): void {
@@ -133,6 +137,7 @@ export class Telemetry {
 		}
 		const span = this.spans.get(event.id);
 		if (event.phase === "change") { span?.addEvent("slate.change", event.attributes, new Date(event.time)); return; }
+		if (event.phase === "admission") { span?.addEvent("slate.request." + event.attributes["slate.outcome"], event.attributes, new Date(event.time)); return; }
 		if (event.phase === "usage") { span?.setAttributes(event.attributes); return; }
 		this.spans.delete(event.id);
 		if (span) {
