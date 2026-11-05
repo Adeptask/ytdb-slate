@@ -2,6 +2,7 @@
  * Slate orchestrator tools (ExecPlan D3): thread / threads / episode.
  */
 
+import type { DispatchTelemetry } from "./telemetry/dispatch.ts";
 import { readFileSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type, type Static } from "typebox";
@@ -60,7 +61,7 @@ function dispatchCostLine(episode: EpisodeRecord): string {
 	return `Cost: ${partialCost ? "≥" : ""}$${reportedCost.toFixed(4)}${costScope} | tokens: ${quantities.join(", ")} | ended ${model} ${effort}${warm}`;
 }
 
-export function registerSlateTools(pi: ExtensionAPI, store: SlateStore, getManager: () => ThreadManager): void {
+export function registerSlateTools(pi: ExtensionAPI, store: SlateStore, getManager: () => ThreadManager, dispatchTelemetry?: (id: string) => DispatchTelemetry | undefined): void {
 	const parameters = Type.Object({
 		name: Type.Optional(Type.String({ description: "Short name for a NEW thread (e.g. \"recon\")" })),
 		trackNumber: Type.Optional(Type.Union([
@@ -179,9 +180,12 @@ export function registerSlateTools(pi: ExtensionAPI, store: SlateStore, getManag
 						? ` If the source folder has this track's report, continue it in this new report and name slate-changes/${store.sourceChange}/${reportName} as read-only in the new report's first entry. Do not edit the source report. Never write in the read-only source folder \`slate-changes/${store.sourceChange}/\`.`
 						: "")
 				: params.task;
+			const telemetry = dispatchTelemetry?.(_toolCallId)?.claim();
 			const result = await getManager().dispatch(
 				{
 					name: params.name,
+					telemetry,
+					track: params.trackNumber === undefined ? undefined : trackIdentifier(params.trackNumber),
 					type,
 					task: reportTask,
 					contextEpisodeIds: params.context,
@@ -193,7 +197,7 @@ export function registerSlateTools(pi: ExtensionAPI, store: SlateStore, getManag
 				ctx,
 				signal,
 				onProgress,
-			);
+			).finally(() => telemetry?.finish("rejected"));
 
 			// What the action RAN ON is reported ONCE, by the episode header itself
 			// (episodes.ts's `ran:` field, two lines below this headline in the same result).

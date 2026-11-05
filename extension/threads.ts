@@ -6,6 +6,7 @@
  * that session once. Terminal work creates at most one episode.
  */
 
+import type { DispatchTelemetry } from "./telemetry/dispatch.ts";
 import { randomUUID } from "node:crypto";
 import { ActionDisplayProgress } from "./render.ts";
 import { sanitizeMaxConcurrent } from "./concurrency.ts";
@@ -106,6 +107,9 @@ export function normalizeContextEpisodeIds(value: unknown): string[] {
 }
 
 export interface DispatchOptions {
+	/** Internal call-local telemetry and canonical track from the thread tool. */
+	telemetry?: DispatchTelemetry;
+	track?: string;
 	/** Removed public field. Kept only so direct callers receive the migration error. */
 	threadId?: unknown;
 	name?: string;
@@ -389,6 +393,9 @@ export class ThreadManager {
 			}
 			throw error;
 		}
+		opts.telemetry?.admit(ctx, { change: capturedChange, track: opts.track, threadId: thread.id,
+			episodeId: slateEpisodeId(thread.id)!, type, model: opts.model,
+			requestedModel: `${initialRoute.provider}/${initialRoute.model}`, effort: initialRoute.effort });
 		return await this.runDispatch(thread, accepted, prompt, ctx, signal, onProgress, admission, initialRoute, reviewGuidance, temporary, folderGuidance, actionMessage);
 	}
 
@@ -642,13 +649,16 @@ export class ThreadManager {
 		let result: DispatchResult | undefined;
 		let failure: { error: unknown } | undefined;
 		try {
-			if (signal?.aborted) this.cancelBeforeStart(thread);
+			const cancel = () => { opts.telemetry?.outcome("cancelled before start"); this.cancelBeforeStart(thread); };
+			if (signal?.aborted) cancel();
 			await this.semaphore.acquire();
 			acquired = true;
-			if (this.teardownStarted) this.cancelBeforeStart(thread);
-			if (signal?.aborted) this.cancelBeforeStart(thread);
+			if (this.teardownStarted || signal?.aborted) cancel();
 			const lease = this.logicalRuntime?.ownership.acquire(thread.id);
-			if (lease?.kind === "busy") throw new Error(`Thread ${thread.id} cannot start because its recovery owner is busy.`);
+			if (lease?.kind === "busy") {
+				opts.telemetry?.outcome("rejected");
+				throw new Error(`Thread ${thread.id} cannot start because its recovery owner is busy.`);
+			}
 			try {
 				result = await this.runDispatchInner(thread, opts, prompt, episodeId, ctx, signal, onProgress, admission, initialRoute, reviewGuidance, (close) => { shutdown = close; }, changeGuidance, actionMessage, display);
 			} finally {
@@ -657,6 +667,8 @@ export class ThreadManager {
 		} catch (error) {
 			failure = { error };
 		} finally {
+			// The outcome is fixed before cleanup, which can independently fail.
+			opts.telemetry?.finish("failed");
 			try {
 				let retention: string | undefined;
 				try { await shutdown(); } catch (error) {
@@ -1012,6 +1024,7 @@ export class ThreadManager {
 					},
 					observeSession: (created) => {
 						startupSession = created;
+						opts.telemetry?.worker(created);
 						if (unsubscribe === undefined) unsubscribe = created.subscribe(observeWorkerEvent);
 						// Append after capture and before startup handlers can request a turn.
 						// Pi appends this non-triggering message synchronously while idle.
@@ -1261,7 +1274,9 @@ export class ThreadManager {
 			aborted = undefined;
 		}
 
+		opts.telemetry?.route(lastExecution ? `${lastExecution.model.provider}/${lastExecution.model.id}` : undefined, lastExecution?.effort);
 		if (aborted) {
+			opts.telemetry?.outcome("aborted");
 			// Apply-time rejection occurs before the worker call. Remove the accepted
 			// placeholder so an unbilled abort leaves neither a thread nor an episode.
 			this.store.threads.delete(thread.id);
@@ -1285,6 +1300,7 @@ export class ThreadManager {
 			else diagnostics ??= cancellationReason();
 		}
 		if (cancelledAction && !frozenCompletedFacts?.hasFacts) {
+			opts.telemetry?.outcome("cancelled");
 			const reason = cancelledDuringStartup ? cancellationReason() : signal?.aborted === true ? "cancelled by the caller" : "cancelled during session teardown";
 			thread.status = "cancelled";
 			thread.outcomeReason = reason;
@@ -1360,6 +1376,7 @@ export class ThreadManager {
 				thread.outcomeReason = `${reason}; ${storageReason}`;
 				thread.updatedAt = Date.now();
 				this.store.workerCostUsd += totalActionCost;
+				opts.telemetry?.outcome("failed", totalActionCost);
 				let saveError: unknown;
 				try { this.store.save(); } catch (error) { saveError = error; }
 				if (saveError !== undefined) {
@@ -1389,6 +1406,7 @@ export class ThreadManager {
 			this.store.workerCostUsd += totalActionCost;
 			let saveError: unknown;
 			try { this.store.save(); } catch (error) { saveError = error; }
+			opts.telemetry?.outcome(saveError === undefined ? "failed" : "stored but failed", totalActionCost, episode);
 			await closeOwnedWorker();
 			if (saveError !== undefined) {
 				emit(true, "failed");
@@ -1509,10 +1527,9 @@ export class ThreadManager {
 			// timestamp identities delete a later live file. writeFreshFile replaces the
 			// canonical name only while storing the new artifact. Detached cleanup cannot
 			// prove ownership and must not delete that name.
-			this.store.workerCostUsd +=
-				usage.cost +
-				(error instanceof EpisodePersistenceError ? (error.costUsd ?? 0) : 0) +
-				(compactionCostUsd ?? 0);
+			const charge = usage.cost + (error instanceof EpisodePersistenceError ? (error.costUsd ?? 0) : 0) + (compactionCostUsd ?? 0);
+			this.store.workerCostUsd += charge;
+			opts.telemetry?.outcome("failed", charge);
 			const actionFailure = diagnostics ?? "the worker action failed";
 			const storageCause = error instanceof EpisodePersistenceError ? error.originalError : undefined;
 			const storageDetail = storageCause === undefined
@@ -1574,13 +1591,15 @@ export class ThreadManager {
 		thread.updatedAt = Date.now();
 		// Accumulate session-wide worker spend, including compression and compaction,
 		// BEFORE save so it persists with the snapshot.
-		this.store.workerCostUsd += usage.cost + (compressed.costUsd ?? 0) + (compactionCostUsd ?? 0);
+		const charge = usage.cost + (compressed.costUsd ?? 0) + (compactionCostUsd ?? 0);
+		this.store.workerCostUsd += charge;
 		let saveError: unknown;
 		try {
 			this.store.save();
 		} catch (error) {
 			saveError = error;
 		} finally {
+			opts.telemetry?.outcome(saveError !== undefined ? "stored but failed" : status === "failed" ? "failed" : "succeeded", charge, episode);
 			await closeOwnedWorker();
 		}
 		if (saveError !== undefined) {

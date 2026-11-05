@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext, ExtensionEvent, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { Telemetry, TELEMETRY_CHANNEL, flushFailures, type TelemetryAttributes, type TelemetrySpan } from "./core.ts";
+import { DispatchTelemetry } from "./dispatch.ts";
 import { isChangeFolder } from "../artifact-names.ts";
 
 type ModelCall = { span?: TelemetrySpan; ended?: number };
@@ -10,6 +11,16 @@ export function registerTelemetry(pi: ExtensionAPI, logicalModel?: (provider: st
 	let sessionId = "";
 	let seen = new Set<string>();
 	const tools = new Map<string, TelemetrySpan | undefined>();
+	const dispatches = new Map<string, DispatchTelemetry>();
+	const toolResults = new Map<string, string>();
+	const finishThreadTool = (id: string) => {
+		const outcome = toolResults.get(id);
+		if (dispatches.get(id)?.pending || outcome === undefined) return;
+		telemetry.end(tools.get(id), { "slate.outcome": outcome });
+		tools.delete(id);
+		toolResults.delete(id);
+		dispatches.delete(id);
+	};
 	const completedModels: ModelCall[] = [];
 	const startupChanges: Array<{ attributes: TelemetryAttributes; time: number }> = [];
 	const session = (): TelemetryAttributes => ({ "slate.session.id": sessionId,
@@ -19,7 +30,7 @@ export function registerTelemetry(pi: ExtensionAPI, logicalModel?: (provider: st
 		const changes = startupChanges.splice(0);
 		const span = telemetry.start("session", session(), undefined, changes[0]!.time);
 		for (const change of changes) telemetry.attachChange(span, change.attributes, change.time);
-		telemetry.end(span, {}, changes.at(-1)!.time);
+		telemetry.end(span, {}, changes.at(-1)!.time, false);
 	};
 	const ensureRun = () => {
 		flushStartupChanges();
@@ -68,8 +79,15 @@ export function registerTelemetry(pi: ExtensionAPI, logicalModel?: (provider: st
 	const scan = (ctx: ExtensionContext) => { for (const entry of ctx.sessionManager.getEntries()) account(entry); };
 	const finish = (ctx: ExtensionContext, outcome: string) => {
 		telemetry.guard("observer", () => scan(ctx));
-		for (const span of [...tools.values()].reverse()) telemetry.end(span, { "slate.outcome": outcome });
-		tools.clear();
+		for (const [id, dispatch] of dispatches) {
+			dispatch.rejectUnclaimed();
+			if (!dispatch.claimed) dispatches.delete(id);
+		}
+		for (const [id, span] of [...tools].reverse()) {
+			if (dispatches.has(id)) continue;
+			telemetry.end(span, { "slate.outcome": outcome });
+			tools.delete(id);
+		}
 		for (const call of completedModels.splice(0)) telemetry.end(call.span, {}, call.ended);
 		telemetry.end(model?.span, { "slate.outcome": outcome }); model = undefined;
 		telemetry.end(compaction, { "slate.outcome": outcome }); compaction = undefined;
@@ -100,10 +118,18 @@ export function registerTelemetry(pi: ExtensionAPI, logicalModel?: (provider: st
 		const parent = event.parentToolCallId ? tools.get(event.parentToolCallId) : turn ?? ensureRun();
 		tools.set(event.toolCallId, telemetry.start("tool", { ...session(), "slate.tool.name": event.toolName,
 			"slate.tool.call_id": event.toolCallId, "slate.tool.parent_call_id": event.parentToolCallId }, parent));
+		if (event.toolName === "thread") {
+			const id = event.toolCallId;
+			dispatches.set(id, new DispatchTelemetry(telemetry, tools.get(id), () => finishThreadTool(id)));
+		}
 	});
 	on("tool_execution_end", (event) => {
-		telemetry.end(tools.get(event.toolCallId), { "slate.outcome": event.isError ? "failed" : "succeeded" });
-		tools.delete(event.toolCallId);
+		// Pi can reject arguments before Slate execute runs.
+		const id = event.toolCallId, dispatch = dispatches.get(id);
+		toolResults.set(id, event.isError ? "failed" : "succeeded");
+		dispatch?.rejectUnclaimed();
+		// A claimed call needs both its dispatch outcome and Pi result, in either order.
+		finishThreadTool(id);
 	});
 	on("turn_end", (_event, ctx) => { scan(ctx); telemetry.end(turn); turn = undefined; });
 	on("agent_end", (_event, ctx) => { finish(ctx, "completed"); });
@@ -140,13 +166,17 @@ export function registerTelemetry(pi: ExtensionAPI, logicalModel?: (provider: st
 		registerShutdown() {
 			pi.on("session_shutdown", (event, ctx) => {
 				telemetry.mode = ctx.mode;
-				telemetry.guard("observer", () => finish(ctx, event.reason));
+				telemetry.guard("observer", () => {
+					if (event.reason === "quit") for (const dispatch of dispatches.values()) dispatch.rejectUnadmitted();
+					finish(ctx, event.reason);
+				});
 				if (event.reason === "quit") flushFailures();
 			});
 		},
 		/** Capture the parent context at dispatch admission by its own call id. */
 		toolContext: (toolCallId: string) => tools.get(toolCallId)?.context,
 		toolSpan: (toolCallId: string) => tools.get(toolCallId),
+		dispatch: (toolCallId: string) => dispatches.get(toolCallId),
 		change,
 		/** Observe successful change commits without editing Slate's mode implementation. */
 		changeTools(api: ExtensionAPI): ExtensionAPI {

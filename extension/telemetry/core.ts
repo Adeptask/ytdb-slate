@@ -26,10 +26,12 @@ export function flushFailures(): void {
 	state.pending.clear();
 }
 
-export type TelemetryKind = "session" | "run" | "turn" | "model" | "tool";
+export type TelemetryKind = "session" | "run" | "turn" | "model" | "tool" | "dispatch";
 export type TelemetryAttributes = Partial<Record<
 	"slate.session.id" | "slate.session.instance_id" | "slate.change" | "slate.change.previous" | "slate.change.source" |
 	"slate.tool.call_id" | "slate.tool.parent_call_id" | "slate.tool.name" |
+	"slate.track" | "slate.thread.id" | "slate.episode.id" | "slate.episode.recorded" |
+	"slate.dispatch.requested_model" | "slate.dispatch.final_model" | "slate.dispatch.requested_effort" | "slate.dispatch.final_effort" |
 	"slate.kind" | "slate.outcome" | "slate.logical_model" | "slate.thread.type" |
 	"gen_ai.provider.name" | "gen_ai.request.model" | "gen_ai.response.model", string
 >> & Partial<Record<
@@ -51,6 +53,8 @@ export type TelemetrySpan = { id: string; kind: TelemetryKind; context: Context;
 const attributeKeys = new Set([
 	"slate.session.id", "slate.session.instance_id", "slate.change", "slate.change.previous", "slate.change.source",
 	"slate.tool.call_id", "slate.tool.parent_call_id", "slate.tool.name", "slate.kind",
+	"slate.track", "slate.thread.id", "slate.episode.id", "slate.episode.recorded",
+	"slate.dispatch.requested_model", "slate.dispatch.final_model", "slate.dispatch.requested_effort", "slate.dispatch.final_effort",
 	"slate.outcome", "slate.logical_model", "slate.thread.type", "slate.turn.index",
 	"gen_ai.provider.name", "gen_ai.request.model", "gen_ai.response.model",
 	"gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens", "gen_ai.usage.cache_read.input_tokens",
@@ -93,7 +97,7 @@ export class Telemetry {
 		if (!handle) return;
 		this.record({ version: 1, phase: "usage", kind: handle.kind, id: handle.id, time: Date.now(), attributes: { ...handle.attributes, ...attributes } });
 	}
-	/** Session metadata shares this identity with spans, without opening a session span. */
+	/** Startup metadata and later spans share this session-instance identity. */
 	sessionIdentity(sessionId: string): string { return `${this.namespace}/session/${sessionId}`; }
 	change(handle: TelemetrySpan | undefined, attributes: TelemetryAttributes, time = Date.now()): void {
 		this.record({ version: 1, phase: "change", kind: handle?.kind ?? "session",
@@ -121,7 +125,7 @@ export class Telemetry {
 		if (event.phase === "start") {
 			const parent = event.parentId ? this.spans.get(event.parentId) : undefined;
 			const context = parent ? trace.setSpan(ROOT_CONTEXT, parent) : ROOT_CONTEXT;
-			this.spans.set(event.id, trace.getTracer("slate", "1").startSpan(`slate.orchestrator.${event.kind}`,
+			this.spans.set(event.id, trace.getTracer("slate", "1").startSpan(event.kind === "dispatch" ? "slate.dispatch" : `slate.orchestrator.${event.kind}`,
 				{ attributes: event.attributes, startTime: new Date(event.time) }, context));
 			return;
 		}
@@ -132,7 +136,7 @@ export class Telemetry {
 		if (span) {
 			try {
 				span.setAttributes(event.attributes);
-				if (event.attributes["slate.outcome"] === "failed") span.setStatus({ code: SpanStatusCode.ERROR });
+				if (["failed", "stored but failed"].includes(event.attributes["slate.outcome"] ?? "")) span.setStatus({ code: SpanStatusCode.ERROR });
 			} finally { span.end(new Date(event.time)); }
 		}
 	}

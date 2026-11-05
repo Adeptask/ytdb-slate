@@ -123,7 +123,7 @@ export default function (pi: ExtensionAPI) {
 
 	let manager = new ThreadManager(store, {}, resolveWorkerExtensionSet, logicalRuntime, compressorRetryPolicy, sessionScope);
 
-	registerSlateTools(pi, store, () => manager);
+	registerSlateTools(pi, store, () => manager, telemetry.dispatch);
 
 	// The base-model tracker's only event ingest. Registered once, reads the LIVE
 	// tracker, and pairs each event with the thinking level pi has already clamped

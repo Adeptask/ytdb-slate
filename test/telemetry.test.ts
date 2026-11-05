@@ -79,6 +79,12 @@ test("parallel and nested tools keep explicit parents and expose dispatch lookup
 	await Promise.all(["a/1", "b/1"].map((toolCallId) => h.emit("tool_execution_start", { toolCallId, parentToolCallId: toolCallId[0], toolName: "thread" })));
 	const span = (id: string) => p.spans.find((s) => s.attributes["slate.tool.call_id"] === id)!;
 	assert.equal(span("a/1").parent, span("a")); assert.equal(span("b/1").parent, span("b"));
+	const a = h.dispatch("a/1"), b = h.dispatch("b/1");
+	assert.ok(a); assert.ok(b);
+	b.outcome("succeeded", 0.2); a.outcome("cancelled");
+	const dispatches = p.spans.filter((s) => s.name === "slate.dispatch");
+	assert.equal(dispatches[0]!.parent, span("a/1")); assert.equal(dispatches[1]!.parent, span("b/1"));
+	assert.equal(p.measurements.some((m) => m.name === "slate.model.cost"), false, "dispatch totals never double bill");
 	assert.equal(trace.getSpan(h.toolContext("a/1")!), span("a/1"));
 	assert.equal(h.toolSpan("b/1")?.kind, "tool"); assert.equal(h.toolContext("absent"), undefined);
 	for (const toolCallId of ["b/1", "a/1", "b", "a"]) await h.emit("tool_execution_end", { toolCallId, isError: toolCallId === "b" });
@@ -269,6 +275,8 @@ test("queued startup changes use a bounded session span without creating or exte
 			}
 			await h.emit("session_shutdown", { reason }); await h.emit("session_shutdown", { reason });
 			const spans = p.spans.slice(spanOffset), metadata = spans[0]!;
+			assert.equal(h.events.find((e) => e.kind === "session" && e.phase === "end")?.durationSeconds, undefined);
+			assert.equal(p.measurements.slice(metricOffset).some((m) => m.labels["slate.kind"] === "session"), false);
 			assert.equal(metadata.name, "slate.orchestrator.session");
 			assert.equal(metadata.parent, undefined); assert.equal(metadata.ends, 1);
 			assert.equal(metadata.attributes["slate.session.instance_id"], changes[0]!.id);
