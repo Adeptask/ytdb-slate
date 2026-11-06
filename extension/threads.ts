@@ -1277,7 +1277,8 @@ export class ThreadManager {
 
 		opts.telemetry?.route(lastExecution ? `${lastExecution.model.provider}/${lastExecution.model.id}` : undefined, lastExecution?.effort);
 		if (aborted) {
-			opts.telemetry?.outcome("aborted");
+			opts.telemetry?.outcome("aborted", undefined, undefined,
+				workerCostUsd === undefined && compactionCostUsd === undefined ? undefined : (workerCostUsd ?? 0) + (compactionCostUsd ?? 0));
 			// Apply-time rejection occurs before the worker call. Remove the accepted
 			// placeholder so an unbilled abort leaves neither a thread nor an episode.
 			this.store.threads.delete(thread.id);
@@ -1301,7 +1302,8 @@ export class ThreadManager {
 			else diagnostics ??= cancellationReason();
 		}
 		if (cancelledAction && !frozenCompletedFacts?.hasFacts) {
-			opts.telemetry?.outcome("cancelled");
+			opts.telemetry?.outcome("cancelled", undefined, undefined,
+				workerCostUsd === undefined && compactionCostUsd === undefined ? undefined : (workerCostUsd ?? 0) + (compactionCostUsd ?? 0));
 			const reason = cancelledDuringStartup ? cancellationReason() : signal?.aborted === true ? "cancelled by the caller" : "cancelled during session teardown";
 			thread.status = "cancelled";
 			thread.outcomeReason = reason;

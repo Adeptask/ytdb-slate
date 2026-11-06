@@ -32,12 +32,12 @@ export type TelemetryAttributes = Partial<Record<
 	"slate.tool.call_id" | "slate.tool.parent_call_id" | "slate.tool.name" |
 	"slate.track" | "slate.thread.id" | "slate.episode.id" | "slate.episode.recorded" |
 	"slate.dispatch.requested_model" | "slate.dispatch.final_model" | "slate.dispatch.requested_effort" | "slate.dispatch.final_effort" |
-	"slate.kind" | "slate.outcome" | "slate.logical_model" | "slate.thread.type" |
+	"slate.dispatch.invalid_accounting" | "slate.kind" | "slate.outcome" | "slate.logical_model" | "slate.thread.type" |
 	"gen_ai.provider.name" | "gen_ai.request.model" | "gen_ai.response.model", string
 >> & Partial<Record<
 	"slate.attempt.index" | "slate.request.index" | "slate.turn.index" | "gen_ai.usage.input_tokens" | "gen_ai.usage.output_tokens" |
 	"gen_ai.usage.cache_read.input_tokens" | "gen_ai.usage.cache_creation.input_tokens" |
-	"gen_ai.usage.reasoning.output_tokens" | "slate.gen_ai.cost.usd", number
+	"gen_ai.usage.reasoning.output_tokens" | "slate.gen_ai.cost.usd" | "slate.dispatch.not_stored_cost.usd", number
 >>;
 export type TelemetryEvent = Readonly<{
 	version: 1;
@@ -49,12 +49,13 @@ export type TelemetryEvent = Readonly<{
 	attributes: Readonly<TelemetryAttributes>;
 	durationSeconds?: number;
 }>;
-export type TelemetrySpan = { id: string; kind: TelemetryKind; context: Context; started: number; parentId?: string; attributes: TelemetryAttributes };
+export type TelemetrySpan = { id: string; kind: TelemetryKind; context: Context; started: number; parentId?: string; attributes: TelemetryAttributes; accounting?: DispatchAccounting };
 const attributeKeys = new Set([
 	"slate.session.id", "slate.session.instance_id", "slate.change", "slate.change.previous", "slate.change.source",
 	"slate.tool.call_id", "slate.tool.parent_call_id", "slate.tool.name", "slate.kind",
 	"slate.track", "slate.thread.id", "slate.episode.id", "slate.episode.recorded",
 	"slate.dispatch.requested_model", "slate.dispatch.final_model", "slate.dispatch.requested_effort", "slate.dispatch.final_effort",
+	"slate.dispatch.invalid_accounting", "slate.dispatch.not_stored_cost.usd",
 	"slate.outcome", "slate.logical_model", "slate.thread.type", "slate.turn.index", "slate.attempt.index", "slate.request.index",
 	"gen_ai.provider.name", "gen_ai.request.model", "gen_ai.response.model",
 	"gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens", "gen_ai.usage.cache_read.input_tokens",
@@ -62,6 +63,46 @@ const attributeKeys = new Set([
 ]);
 const metricKeys = ["slate.kind", "slate.outcome", "slate.logical_model", "slate.thread.type",
 	"gen_ai.provider.name", "gen_ai.request.model", "gen_ai.response.model"] as const;
+
+const numericKeys = new Set(["slate.attempt.index", "slate.request.index", "slate.turn.index",
+	"gen_ai.usage.input_tokens", "gen_ai.usage.output_tokens", "gen_ai.usage.cache_read.input_tokens",
+	"gen_ai.usage.cache_creation.input_tokens", "gen_ai.usage.reasoning.output_tokens",
+	"slate.gen_ai.cost.usd", "slate.dispatch.not_stored_cost.usd"]);
+function validNumber(key: string, value: unknown): value is number {
+	return typeof value === "number" && Number.isFinite(value) && value >= 0
+		&& (!key.startsWith("gen_ai.usage.") || Number.isInteger(value));
+}
+
+/** Shared by every hook of one dispatch, not by a route attempt or metric label. */
+export class DispatchAccounting {
+	private invalidCost = false;
+	private invalidTokens = false;
+	private totals = new Map<string, number>();
+	get mark(): string | undefined {
+		return this.invalidCost ? this.invalidTokens ? "both" : "cost" : this.invalidTokens ? "tokens" : undefined;
+	}
+	get costInvalid(): boolean { return this.invalidCost; }
+	get costKnown(): boolean { return this.totals.has("slate.gen_ai.cost.usd"); }
+	check(attributes: TelemetryAttributes): void {
+		for (const [key, value] of Object.entries(attributes)) {
+			if (value === undefined || !numericKeys.has(key) || validNumber(key, value)) continue;
+			if (key.startsWith("gen_ai.usage.")) this.invalidTokens = true;
+			else if (key.endsWith("cost.usd")) this.invalidCost = true;
+		}
+	}
+	collect(attributes: TelemetryAttributes, source: "worker" | "compaction"): void {
+		this.check(attributes);
+		for (const [key, value] of Object.entries(attributes)) {
+			if (!validNumber(key, value)) continue;
+			// Check both component sums and the combined dispatch sum.
+			for (const sumKey of [source + "/" + key, key]) {
+				const sum = (this.totals.get(sumKey) ?? 0) + value;
+				this.check({ [key]: sum });
+				this.totals.set(sumKey, sum);
+			}
+		}
+	}
+}
 
 /** One allowlisted event feeds both sinks. No SDK or global provider belongs here. */
 export class Telemetry {
@@ -82,8 +123,8 @@ export class Telemetry {
 	start(kind: TelemetryKind, attributes: TelemetryAttributes = {}, parent?: TelemetrySpan, started = Date.now()): TelemetrySpan | undefined {
 		if (!this.enabled) return undefined;
 		const handle: TelemetrySpan = { id: `${this.namespace}/${++this.sequence}`, kind, context: parent?.context ?? ROOT_CONTEXT,
-			started, parentId: parent?.id, attributes: { ...attributes } };
-		this.record({ version: 1, phase: "start", kind, id: handle.id, parentId: handle.parentId, time: handle.started, attributes });
+			started, parentId: parent?.id, attributes: { ...attributes }, accounting: parent?.accounting };
+		this.record({ version: 1, phase: "start", kind, id: handle.id, parentId: handle.parentId, time: handle.started, attributes }, handle.accounting);
 		const span = this.spans.get(handle.id);
 		if (span) handle.context = trace.setSpan(handle.context, span);
 		return handle;
@@ -91,11 +132,11 @@ export class Telemetry {
 	end(handle: TelemetrySpan | undefined, attributes: TelemetryAttributes = {}, time = Date.now(), durationKnown = true): void {
 		if (!handle) return;
 		this.record({ version: 1, phase: "end", kind: handle.kind, id: handle.id, parentId: handle.parentId, time,
-			durationSeconds: durationKnown ? Math.max(0, time - handle.started) / 1000 : undefined, attributes: { ...handle.attributes, ...attributes } });
+			durationSeconds: durationKnown ? Math.max(0, time - handle.started) / 1000 : undefined, attributes: { ...handle.attributes, ...attributes } }, handle.accounting);
 	}
 	usage(handle: TelemetrySpan | undefined, attributes: TelemetryAttributes): void {
 		if (!handle) return;
-		this.record({ version: 1, phase: "usage", kind: handle.kind, id: handle.id, time: Date.now(), attributes: { ...handle.attributes, ...attributes } });
+		this.record({ version: 1, phase: "usage", kind: handle.kind, id: handle.id, time: Date.now(), attributes: { ...handle.attributes, ...attributes } }, handle.accounting);
 	}
 	admission(handle: TelemetrySpan | undefined, outcome: "wait" | "refused"): void {
 		if (handle) this.record({ version: 1, phase: "admission", kind: handle.kind, id: handle.id,
@@ -111,11 +152,12 @@ export class Telemetry {
 	attachChange(handle: TelemetrySpan | undefined, attributes: TelemetryAttributes, time: number): void {
 		this.guard("spans", () => { if (handle) this.spans.get(handle.id)?.addEvent("slate.change", attributes, new Date(time)); });
 	}
-	private record(input: TelemetryEvent): void {
+	private record(input: TelemetryEvent, accounting?: DispatchAccounting): void {
 		this.guard("observer", () => {
+			accounting?.check(input.attributes);
 			const attributes: TelemetryAttributes = {};
 			for (const [key, value] of Object.entries(input.attributes)) {
-				if (attributeKeys.has(key) && (typeof value === "string" || (typeof value === "number" && Number.isFinite(value) && value >= 0))) {
+				if (attributeKeys.has(key) && (numericKeys.has(key) ? validNumber(key, value) : typeof value === "string")) {
 					Object.assign(attributes, { [key]: value });
 				}
 			}
@@ -166,6 +208,6 @@ export class Telemetry {
 			}
 		}
 		const cost = event.attributes["slate.gen_ai.cost.usd"];
-		if (cost !== undefined) meter.createCounter("slate.model.cost", { unit: "USD" }).add(cost, labels);
+		if (typeof cost === "number") meter.createCounter("slate.model.cost", { unit: "USD" }).add(cost, labels);
 	}
 }

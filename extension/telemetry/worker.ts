@@ -1,5 +1,5 @@
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
-import { Telemetry, type TelemetryAttributes, type TelemetrySpan } from "./core.ts";
+import { DispatchAccounting, Telemetry, type TelemetryAttributes, type TelemetrySpan } from "./core.ts";
 import { observeRequests, type RequestObservation } from "./request.ts";
 
 type CollectedUsage = { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: { total?: number } };
@@ -26,8 +26,10 @@ export class WorkerTelemetry {
 	private tools = new Map<string, TelemetrySpan | undefined>();
 	private unsubscribe?: () => void;
 	private telemetry: Telemetry;
+	private accounting: DispatchAccounting;
 	private attributes: TelemetryAttributes;
-	constructor(telemetry: Telemetry, parent: TelemetrySpan | undefined, attributes: TelemetryAttributes, session: Pick<AgentSession, "subscribe">) {
+	constructor(telemetry: Telemetry, parent: TelemetrySpan | undefined, attributes: TelemetryAttributes, session: Pick<AgentSession, "subscribe">, privateAccounting = parent?.accounting ?? new DispatchAccounting()) {
+		this.accounting = privateAccounting;
 		this.telemetry = telemetry;
 		this.attributes = Object.fromEntries(Object.entries({ ...parent?.attributes, ...attributes, "slate.attempt.index": 0 })
 			.filter(([key]) => !key.startsWith("slate.tool.")));
@@ -95,6 +97,7 @@ export class WorkerTelemetry {
 	}
 	private observe(event: AgentSessionEvent): void {
 		if (event.type === "message_end" && event.message.role === "assistant") {
+			this.accounting.collect(usageAttributes(event.message.usage), "worker");
 			const call = this.billing.shift();
 			if (!call) return;
 			this.calls.delete(call);
@@ -108,10 +111,14 @@ export class WorkerTelemetry {
 		} else if (event.type === "compaction_end") {
 			if (this.seenCompactions.has(event)) return;
 			this.seenCompactions.add(event);
+			const attributes = usageAttributes(event.result?.usage);
+			this.accounting.collect(attributes, "compaction");
 			const compaction = this.compaction; this.compaction = undefined;
-			if (!compaction) return;
-			this.telemetry.usage(compaction.span, usageAttributes(event.result?.usage));
-			this.end(compaction.span, event.aborted ? "cancelled" : event.result ? "succeeded" : "failed");
+			if (!compaction && !this.accepting) return;
+			// Slate also collects a completion whose start was not observed.
+			const span = compaction?.span ?? this.telemetry.start("worker_compaction", this.attributes, this.turn ?? this.attempt);
+			this.telemetry.usage(span, attributes);
+			this.telemetry.end(span, { "slate.outcome": event.aborted ? "cancelled" : event.result ? "succeeded" : "failed" }, Date.now(), compaction !== undefined);
 		} else if (event.type === "turn_start") {
 			if (!this.accepting) return;
 			const previous = this.turn; this.turn = undefined;

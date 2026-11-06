@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, test, type TestContext } from "node:test";
+import { metrics, trace, type Attributes, type MeterProvider } from "@opentelemetry/api";
 import { SessionManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createLogicalRuntime } from "../extension/logical-model-runtime.ts";
 import { SlateStore } from "../extension/state.ts";
@@ -13,16 +14,17 @@ import { FAILURE_KEY, type TelemetryEvent } from "../extension/telemetry/core.ts
 import { WORKER_IDENTITY_TYPE } from "../extension/telemetry/dispatch.ts";
 import { normalizeContext } from "@earendil-works/pi-ai/compat";
 import { installWorkerRequestContract, type WorkerSession } from "../extension/worker.ts";
-import { bindFakeWorkerRequest } from "./worker-request-contract-fixture.ts";
 import extension from "../extension/index.ts";
 
-afterEach(() => { Reflect.deleteProperty(globalThis, FAILURE_KEY); });
+afterEach(() => { metrics.disable(); trace.disable(); Reflect.deleteProperty(globalThis, FAILURE_KEY); });
 function deferred() {
 	let resolve!: () => void;
 	const promise = new Promise<void>((done) => { resolve = done; });
 	return { promise, resolve };
 }
-function fixture(t: TestContext, mode = "ok") {
+type BillingUsage = { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: { total?: number } };
+function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; compaction: BillingUsage;
+	compactionDelivery?: "duplicate-without-start" }) {
 	const root = mkdtempSync(join(tmpdir(), "slate-dispatch-telemetry-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	const handlers = new Map<string, any[]>(), tools = new Map<string, any>(), events: TelemetryEvent[] = [];
@@ -68,6 +70,10 @@ function fixture(t: TestContext, mode = "ok") {
 	let internal = manager as any;
 	const openWorkerFor = async (args: any) => {
 		opens++;
+		const localBilling = mode.startsWith("parallel-") ? {
+			worker: { input: opens, cost: { total: opens === 1 ? mode === "parallel-invalid" ? -1 : 0.125 : 0.375 } },
+			compaction: { output: 2, cost: { total: 0.125 } },
+		} : billing;
 		const listeners = new Set<(event: any) => void>();
 		const sessionManager = SessionManager.create(root, join(root, "workers"));
 		sessions.push(sessionManager);
@@ -75,7 +81,9 @@ function fixture(t: TestContext, mode = "ok") {
 		const send = (event: any) => { for (const fn of listeners) fn(event); };
 		const session = { agent: { streamFunction: (() => ({})) as unknown as WorkerSession["agent"]["streamFunction"] }, sessionManager, messages: [] as any[], model: { provider: "test", id: "worker" }, thinkingLevel: "off",
 			subscribe(fn: (event: any) => void) { listeners.add(fn); return () => listeners.delete(fn); },
-			async sendCustomMessage() {}, setThinkingLevel() {},
+			async sendCustomMessage() {}, setThinkingLevel() {
+				if (mode.startsWith("billed-startup-abort")) throw Error("fixed effort");
+			},
 			async setModel(model: { provider: string; id: string }) { session.model = model; },
 			async abort() { if (mode === "shutdown") { controller.abort(); release.resolve(); } },
 			closeManagedOperations() {}, async settleManagedOperations() {},
@@ -86,17 +94,15 @@ function fixture(t: TestContext, mode = "ok") {
 			async prompt() {
 				prompts++;
 				send({ type: "turn_start" });
-				if (mode === "billed-cancel") {
-					session.agent.streamFunction(session.model as Parameters<WorkerSession["agent"]["streamFunction"]>[0], normalizeContext({ messages: [] }));
-					const message = { role: "assistant", content: [], stopReason: "aborted",
-						usage: { input: 11, output: 7, cacheRead: 3, cacheWrite: 2, cost: { total: 0.3 } } };
-					send({ type: "message_end", message });
+				if (mode.startsWith("billed-cancel")) {
+					bill(mode.endsWith("facts"), true);
 					controller.abort(); throw Error("cancelled");
 				}
+				session.agent.streamFunction(session.model as Parameters<WorkerSession["agent"]["streamFunction"]>[0], normalizeContext({ messages: [] }));
 				send({ type: "tool_execution_start", toolCallId: "outer", toolName: "codemode" });
 				send({ type: "tool_execution_start", toolCallId: "inner", parentToolCallId: "outer", toolName: "read" });
 				sessionManager.appendMessage({ role: "user", content: "private task", timestamp: 1 });
-				if (mode === "parallel" || mode === "shutdown") { entered.resolve(); await release.promise; }
+				if (mode.startsWith("parallel") || mode === "shutdown") { entered.resolve(); await release.promise; }
 				if (mode === "shutdown" || mode === "cancel" || mode === "cancel-save") { controller.abort(); throw Error("cancelled"); }
 				if (mode.includes("storage")) writeFileSync(join(root, ".pi"), "block episode");
 				if (mode.startsWith("empty")) throw Error("empty failure");
@@ -104,7 +110,7 @@ function fixture(t: TestContext, mode = "ok") {
 					stopReason: mode === "failed" || (mode === "recovery" && prompts === 1) ? "error" : "stop",
 					errorMessage: mode === "recovery" ? "temporary timeout" : mode === "failed" ? "private error" : undefined,
 					content: [{ type: "text", text: "private result" }], timestamp: 2,
-					usage: { input: 11, output: 7, cacheRead: 3, cacheWrite: 2, totalTokens: 23, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.3 } } };
+					usage: localBilling ? localBilling.worker : { input: 11, output: 7, cacheRead: 3, cacheWrite: 2, totalTokens: 23, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.3 } } };
 				session.messages.push(message); sessionManager.appendMessage(message as any);
 				if (mode === "recovery" && prompts === 1) {
 					send({ type: "agent_end", willRetry: true });
@@ -112,16 +118,37 @@ function fixture(t: TestContext, mode = "ok") {
 					send({ type: "agent_end", willRetry: false });
 					send({ type: "auto_retry_end", success: false, attempt: 1 });
 				}
-				for (const fn of listeners) {
-					fn({ type: "message_end", message });
-					fn({ type: "compaction_end", result: { usage: { input: 5, output: 4, cost: { total: 0.2 } } }, aborted: false });
-				}
+				send({ type: "message_end", message });
+				compact();
 			},
 		};
+		const compact = () => {
+			const duplicateWithoutStart = billing?.compactionDelivery === "duplicate-without-start";
+			if (!duplicateWithoutStart) send({ type: "compaction_start" });
+			const end = { type: "compaction_end", result: { usage: localBilling ? localBilling.compaction : { input: 5, output: 4, cost: { total: 0.2 } } }, aborted: false };
+			send(end);
+			if (duplicateWithoutStart) send(end);
+		};
+		const bill = (facts: boolean, cancelled = false) => {
+			session.agent.streamFunction(session.model as Parameters<WorkerSession["agent"]["streamFunction"]>[0], normalizeContext({ messages: [] }));
+			const message = { role: "assistant", provider: "test", model: "worker", api: "openai-responses",
+				content: facts ? [{ type: "text", text: "private startup" }] : [], timestamp: 2,
+				stopReason: cancelled ? "aborted" : "stop",
+				usage: localBilling ? localBilling.worker : { input: 11, output: 7, cacheRead: 3, cacheWrite: 2, cost: { total: 0.3 } } };
+			session.messages.push(message); sessionManager.appendMessage(message as any);
+			send({ type: "message_end", message });
+			if (localBilling) compact();
+		};
 		if (mode === "identity-failure") (sessionManager as any).appendCustomEntry = () => { throw Error("identity"); };
-		if (mode === "billed-cancel") installWorkerRequestContract(session as unknown as WorkerSession, args.requestContract);
+		installWorkerRequestContract(session as unknown as WorkerSession, args.requestContract);
 		args.observeSession(session);
 		send({ type: "turn_start" });
+		if (mode.startsWith("billed-startup-")) {
+			bill(mode.endsWith("facts"));
+			if (mode.startsWith("billed-startup-cancel")) {
+				controller.abort(); args.observeStartupFailure("startup"); throw Error("startup");
+			}
+		}
 		if (["ok", "parallel", "recovery"].includes(mode)) {
 			send({ type: "tool_execution_start", toolCallId: "startup", toolName: "read" });
 			send({ type: "tool_execution_end", toolCallId: "startup", isError: false });
@@ -130,7 +157,6 @@ function fixture(t: TestContext, mode = "ok") {
 		if (mode === "startup-cancel") {
 			controller.abort(); args.observeStartupFailure("startup"); throw Error("startup");
 		}
-		bindFakeWorkerRequest(session, args.requestContract);
 		internal.live.set(args.thread.id, session);
 		return { session };
 	};
@@ -157,6 +183,161 @@ function fixture(t: TestContext, mode = "ok") {
 	};
 }
 
+function checkAgreement(events: TelemetryEvent[], store: SlateStore, expectedCallIds: readonly string[]): string[] {
+	const starts = new Map(events.filter((e) => e.phase === "start").map((e) => [e.id, e]));
+	const descends = (id: string, ancestor: string): boolean => {
+		while (id !== ancestor) {
+			const parent = starts.get(id)?.parentId;
+			if (!parent) return false;
+			id = parent;
+		}
+		return true;
+	};
+	const checked: string[] = [];
+	for (const end of events.filter((e) => e.kind === "dispatch" && e.phase === "end")) {
+		const a = end.attributes;
+		assert.equal(a["slate.dispatch.invalid_accounting"], undefined, "agreement fixtures must be unmarked");
+		const billed = events.filter((e) => e.phase === "usage" && descends(e.id, end.id));
+		const costs = billed.flatMap((e) => e.attributes["slate.gen_ai.cost.usd"] === undefined ? [] : [e.attributes["slate.gen_ai.cost.usd"]!]);
+		const notStored = a["slate.dispatch.not_stored_cost.usd"];
+		if (costs.length) {
+			assert.equal(typeof notStored, "number");
+			const actual = costs.reduce((n, cost) => n + cost, 0);
+			const expected = (a["slate.gen_ai.cost.usd"] ?? 0) + notStored!;
+			// Eight rounding units per addition, scaled to these costs, not to one dollar.
+			const tolerance = 8 * Number.EPSILON * Math.max(Math.abs(actual), Math.abs(expected), Number.MIN_VALUE) * costs.length;
+			assert.ok(Math.abs(actual - expected) <= tolerance, `billed ${actual} != stored + not-stored ${expected}`);
+		} else assert.equal(notStored, undefined, "unknown is not zero");
+		const episode = store.episodes.get(a["slate.episode.id"]!);
+		if (episode) {
+			for (const [field, key] of [["input", "input_tokens"], ["output", "output_tokens"],
+				["cacheRead", "cache_read.input_tokens"], ["cacheWrite", "cache_creation.input_tokens"]] as const) {
+				for (const compaction of [false, true]) {
+					const values = billed.filter((e) => (e.kind === "worker_compaction") === compaction)
+						.flatMap((e) => e.attributes[`gen_ai.usage.${key}`] === undefined ? [] : [e.attributes[`gen_ai.usage.${key}`]!]);
+					assert.equal(values.length ? values.reduce((n, v) => n + v, 0) : undefined,
+						compaction ? episode.compactionUsage?.[field] : episode[field], field);
+				}
+			}
+		}
+		checked.push(a["slate.tool.call_id"]!);
+	}
+	assert.deepEqual([...checked].sort(), [...expectedCallIds].sort(), "no unmarked dispatch escapes the agreement");
+	return checked;
+}
+
+test("per-dispatch billed cost and exact episode tokens agree across every accounting exit", async (t) => {
+	const points: Array<{ name: string; value: number; labels: Attributes }> = [];
+	metrics.setGlobalMeterProvider({ getMeter: () => ({
+		createCounter: (name: string) => ({ add: (value: number, labels: Attributes) => points.push({ name, value, labels }) }),
+		createHistogram: () => ({ record() {} }),
+	}) } as unknown as MeterProvider);
+	const known = { worker: { input: 11, output: 7, cacheRead: 3, cacheWrite: 2, cost: { total: 0.375 } },
+		compaction: { input: 5, output: 4, cost: { total: 0.125 } } };
+	const checked: string[] = [], expectedCallIds: string[] = [];
+	const expectedCosts: number[] = [];
+	const collectCosts = (events: TelemetryEvent[]) => expectedCosts.push(...events.filter((e) => e.phase === "usage")
+		.flatMap((e) => e.attributes["slate.gen_ai.cost.usd"] === undefined ? [] : [e.attributes["slate.gen_ai.cost.usd"]!]));
+	for (const mode of ["ok", "failed", "storage", "stored-save", "empty", "empty-storage", "empty-stored-save",
+		"running-save", "busy", "abort", "abort-save", "cancel", "cancel-save", "startup-cancel",
+		"billed-cancel", "billed-cancel-facts", "billed-startup-abort", "billed-startup-abort-facts",
+		"billed-startup-cancel", "billed-startup-cancel-facts"]) {
+		const h = fixture(t, mode, known);
+		expectedCallIds.push(mode);
+		await h.call(mode).catch(() => {});
+		checked.push(...checkAgreement(h.events, h.store, [mode]));
+		collectCosts(h.events);
+		if (mode.startsWith("billed-")) {
+			const a = h.outcomes()[0]!.attributes, facts = mode.endsWith("facts");
+			assert.equal(a["slate.outcome"], facts ? "failed" : mode.includes("abort") ? "aborted" : "cancelled", mode);
+			assert.equal(a["slate.dispatch.not_stored_cost.usd"], facts ? 0 : 0.5, mode);
+			assert.equal(a["slate.gen_ai.cost.usd"], facts ? 0.5 : undefined, mode);
+			assert.equal(h.store.workerCostUsd, facts ? 0.5 : 0, mode);
+			assert.equal(h.store.episodes.size, facts ? 1 : 0, mode);
+		}
+		await h.manager.disposeAll();
+	}
+	for (const [index, billing] of [
+		{ worker: {}, compaction: {} },
+		{ worker: { input: 0, cost: { total: 0 } }, compaction: {} },
+		{ worker: { input: 4 }, compaction: { output: 0, cost: { total: 0.125 } } },
+		{ worker: { cost: { total: 0.1 } }, compaction: { cost: { total: 0.2 } } },
+	].entries()) {
+		const h = fixture(t, "ok", billing), id = `billing-${index}`;
+		expectedCallIds.push(id);
+		await h.call(id);
+		checked.push(...checkAgreement(h.events, h.store, [id])); collectCosts(h.events);
+		await h.manager.disposeAll();
+	}
+	assert.deepEqual(checked, expectedCallIds, "every scenario dispatch ran its agreement assertions");
+	assert.deepEqual(points.filter((p) => p.name === "slate.model.cost").map((p) => p.value), expectedCosts);
+	assert.ok(points.every((p) => !Object.keys(p.labels).some((key) => /dispatch|episode|thread.id/.test(key))));
+});
+
+test("duplicate compaction completion without a start agrees through real charging and no-facts exits", async (t) => {
+	for (const mode of ["ok", "billed-cancel"]) {
+		await t.test(mode, async (t) => {
+			const h = fixture(t, mode, {
+				worker: { input: 11, cost: { total: 0.375 } },
+				compaction: { input: 5, output: 4, cost: { total: 0.125 } },
+				compactionDelivery: "duplicate-without-start",
+			});
+			await h.call().catch(() => {});
+			checkAgreement(h.events, h.store, ["call"]);
+			const compactions = h.events.filter((e) => e.kind === "worker_compaction");
+			assert.equal(compactions.filter((e) => e.phase === "usage").length, 1);
+			const ends = compactions.filter((e) => e.phase === "end");
+			assert.equal(ends.length, 1);
+			assert.equal(ends[0]!.durationSeconds, undefined);
+			const a = h.outcomes()[0]!.attributes, charging = mode === "ok";
+			assert.equal(a["slate.outcome"], charging ? "succeeded" : "cancelled");
+			assert.equal(a["slate.gen_ai.cost.usd"], charging ? 0.5 : undefined);
+			assert.equal(a["slate.dispatch.not_stored_cost.usd"], charging ? 0 : 0.5);
+			assert.equal(h.store.workerCostUsd, charging ? 0.5 : 0);
+			assert.equal(h.store.episodes.size, charging ? 1 : 0);
+			await h.manager.disposeAll();
+		});
+	}
+});
+
+test("agreement coverage rejects missing and duplicate dispatch checks", async (t) => {
+	const h = fixture(t); await h.call();
+	const end = h.outcomes()[0]!;
+	assert.throws(() => checkAgreement(h.events.filter((e) => e !== end), h.store, ["call"]), /no unmarked dispatch escapes/);
+	assert.throws(() => checkAgreement([...h.events, end], h.store, ["call"]), /no unmarked dispatch escapes/);
+	assert.throws(() => checkAgreement(h.events, h.store, ["call", "missing"]), /no unmarked dispatch escapes/);
+});
+
+test("invalid real dispatch accounting is marked without changing Slate additions", async (t) => {
+	for (const [mode, worker, compaction, mark] of [
+		["ok", { input: 1, cost: { total: -1 } }, {}, "cost"],
+		["ok", { input: 1.5, cost: { total: 0.125 } }, {}, "tokens"],
+		["ok", { input: -1, cost: { total: NaN } }, {}, "both"],
+		["ok", {}, { input: 1.5, cost: { total: Infinity } }, "both"],
+		["billed-cancel", { cost: { total: -1 } }, {}, "cost"],
+		["billed-startup-abort", {}, { cost: { total: Infinity } }, "cost"],
+		["ok", { cost: { total: Number.MAX_VALUE } }, { cost: { total: Number.MAX_VALUE } }, "cost"],
+	] as Array<[string, BillingUsage, BillingUsage, string]>) {
+		const h = fixture(t, mode, { worker, compaction });
+		await h.call().catch(() => {});
+		const a = h.outcomes()[0]!.attributes;
+		assert.equal(a["slate.dispatch.invalid_accounting"], mark, mode);
+		assert.equal(a["slate.dispatch.not_stored_cost.usd"], mark === "tokens" ? 0 : undefined);
+		if (mode === "ok") {
+			assert.equal(h.store.workerCostUsd, (worker.cost?.total ?? 0) + (compaction.cost?.total ?? 0));
+		} else assert.equal(h.store.workerCostUsd, 0);
+		await h.manager.disposeAll();
+	}
+});
+
+test("agreement detects a missing charge rather than accepting a sum grouped by labels", async (t) => {
+	const h = fixture(t); await h.call();
+	checkAgreement(h.events, h.store, ["call"]);
+	const broken = h.events.map((e) => e.kind === "dispatch" && e.phase === "end"
+		? { ...e, attributes: { ...e.attributes, "slate.gen_ai.cost.usd": 0.3 } } : e);
+	assert.throws(() => checkAgreement(broken, h.store, ["call"]), /billed .* != stored/);
+});
+
 test("real dispatch outcome paths agree with local charges and stored episodes", async (t) => {
 	for (const [mode, outcome, recorded, cost] of [
 		["ok", "succeeded", true, 0.5], ["failed", "failed", true, 0.5],
@@ -181,6 +362,7 @@ test("real dispatch outcome paths agree with local charges and stored episodes",
 			for (const [key, value] of [["input_tokens", episode.input], ["output_tokens", episode.output]] as const) assert.equal(attrs[`gen_ai.usage.${key}`], value);
 			assert.equal(attrs["slate.dispatch.final_model"], episode.model);
 		}
+		checkAgreement(h.events, h.store, ["call"]);
 		assert.equal(attrs["slate.change"], undefined); assert.equal(attrs["slate.track"], undefined);
 		const workerStarts = h.events.filter((e) => e.phase === "start" && e.kind.startsWith("worker_"));
 		for (const start of workerStarts) assert.equal(h.events.filter((e) => e.phase === "end" && e.id === start.id).length, 1, mode);
@@ -247,9 +429,33 @@ test("parallel dispatches retain their own explicit tool parents, charge and can
 		assert.equal(identity.data.change, change); assert.equal(identity.data.threadId, end.attributes["slate.thread.id"]);
 		assert.equal(end.attributes["slate.gen_ai.cost.usd"], 0.5);
 	}
+	assert.deepEqual(checkAgreement(h.events, h.store, ["a", "b"]).sort(), ["a", "b"], "same-label parallel dispatches each agree");
 	assert.equal(h.store.workerCostUsd, 13);
 	assert.notEqual(ends[0]!.attributes["slate.thread.id"], ends[1]!.attributes["slate.thread.id"]);
 	assert.doesNotMatch(JSON.stringify(h.events), /private task|private result|private error|private reason/);
+});
+
+test("parallel dispatches sharing every metric label keep different bills and invalid marks separate", async (t) => {
+	for (const mode of ["parallel-varied", "parallel-invalid"]) {
+		const h = fixture(t, mode), a = h.call("a"), b = h.call("b");
+		await h.entered.promise;
+		while (h.opens() < 2) await new Promise<void>((done) => setImmediate(done));
+		h.release.resolve(); await Promise.all([a, b]);
+		const ends = h.outcomes();
+		const first = ends.find((e) => e.attributes["slate.tool.call_id"] === "a")!.attributes;
+		const second = ends.find((e) => e.attributes["slate.tool.call_id"] === "b")!.attributes;
+		assert.equal(first["slate.gen_ai.cost.usd"], mode === "parallel-invalid" ? undefined : 0.25);
+		assert.equal(second["slate.gen_ai.cost.usd"], 0.5);
+		assert.equal(first["slate.dispatch.invalid_accounting"], mode === "parallel-invalid" ? "cost" : undefined);
+		assert.equal(second["slate.dispatch.invalid_accounting"], undefined);
+		assert.equal(second["slate.dispatch.not_stored_cost.usd"], 0);
+		const labels = h.events.filter((e) => e.kind === "worker_model_call" && e.phase === "usage")
+			.map((e) => ["slate.logical_model", "slate.thread.type", "gen_ai.provider.name", "gen_ai.request.model"]
+				.map((key) => e.attributes[key as keyof typeof e.attributes]));
+		assert.equal(labels.length, 2); assert.deepEqual(labels[0], labels[1]);
+		if (mode === "parallel-varied") checkAgreement(h.events, h.store, ["a", "b"]);
+		await h.manager.disposeAll();
+	}
 });
 
 test("teardown cancels a queued dispatch before start and every call finishes once", async (t) => {

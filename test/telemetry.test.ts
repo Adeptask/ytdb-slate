@@ -211,6 +211,25 @@ test("publication is frozen and cannot mutate span or metric mapping", () => {
 	assert.ok(p.measurements.every((m) => m.labels["slate.session.id"] === undefined));
 });
 
+test("numeric allowlist rejects strings and fractional tokens in every sink and marks the dispatch", () => {
+	const p = provider(); p.register();
+	const events: TelemetryEvent[] = [], telemetry = new Telemetry((e) => events.push(e));
+	const dispatch = new DispatchTelemetry(telemetry);
+	const parent = telemetry.start("model")!;
+	parent.accounting = dispatch.accounting;
+	telemetry.usage(parent, { "slate.gen_ai.cost.usd": "3", "gen_ai.usage.input_tokens": 1.25,
+		"gen_ai.usage.output_tokens": "2", "slate.dispatch.not_stored_cost.usd": "0",
+		"slate.attempt.index": "1" } as any);
+	telemetry.end(parent); dispatch.outcome("failed", 0); dispatch.finish("failed");
+	assert.equal(p.measurements.filter((m) => m.name.startsWith("slate.model.")).length, 0);
+	const billed = events.find((e) => e.phase === "usage")!;
+	assert.deepEqual(billed.attributes, {});
+	const end = events.find((e) => e.kind === "dispatch" && e.phase === "end")!;
+	assert.equal(end.attributes["slate.dispatch.invalid_accounting"], "both");
+	assert.equal(end.attributes["slate.dispatch.not_stored_cost.usd"], undefined);
+	assert.equal(p.spans.find((s) => s.name === "slate.dispatch")!.attributes["slate.dispatch.invalid_accounting"], "both");
+});
+
 test("off switch prevents both outputs and observer work", async (t) => {
 	const before = process.env.SLATE_TELEMETRY;
 	process.env.SLATE_TELEMETRY = "0";

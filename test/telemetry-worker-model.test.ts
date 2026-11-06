@@ -107,6 +107,81 @@ test("compaction retries time requests without request billing and collect final
 	h.dispatch.finish("succeeded"); balanced(h.events);
 });
 
+test("compaction completion without a start bills once and keeps duration unknown", () => {
+	const points = meter(), h = fixture();
+	const end = { type: "compaction_end", aborted: true, result: { usage: { cost: { total: 0.125 }, input: 2 } } };
+	h.emit(end); h.emit(end);
+	h.dispatch.outcome("cancelled", undefined, undefined, 0.125); h.dispatch.finish("failed");
+	assert.equal(h.of("worker_compaction", "usage").length, 1);
+	assert.equal(h.of("worker_compaction", "end")[0]!.durationSeconds, undefined);
+	assert.deepEqual(points.filter((p) => p.name === "slate.model.cost").map((p) => p.value), [0.125]);
+	assert.equal(h.of("dispatch", "end")[0]!.attributes["slate.dispatch.not_stored_cost.usd"], 0.125);
+	balanced(h.events);
+});
+
+test("invalid cost and tokens mark the dispatch, drop only bad values and never fabricate not-stored cost", () => {
+	const points = meter();
+	for (const [field, value, mark] of [
+		["cost", -1, "cost"], ["cost", NaN, "cost"], ["cost", Infinity, "cost"], ["cost", -Infinity, "cost"], ["cost", "1", "cost"],
+		["input", -1, "tokens"], ["input", NaN, "tokens"], ["input", Infinity, "tokens"], ["input", 1.5, "tokens"], ["input", "2", "tokens"],
+		["both", -1, "both"],
+	] as const) {
+		const h = fixture(); h.install(); h.call();
+		const u = { input: field === "cost" ? 2 : value, cost: { total: field === "input" ? 0.125 : value } };
+		h.message(u); h.dispatch.outcome("succeeded", 0.125); h.dispatch.finish("failed");
+		const a = h.of("dispatch", "end")[0]!.attributes, billed = h.of("worker_model_call", "usage")[0]!.attributes;
+		assert.equal(a["slate.dispatch.invalid_accounting"], mark);
+		assert.equal(a["slate.dispatch.not_stored_cost.usd"], mark === "tokens" ? 0 : undefined);
+		assert.equal(billed["slate.gen_ai.cost.usd"], field === "input" ? 0.125 : undefined);
+		assert.equal(billed["gen_ai.usage.input_tokens"], field === "cost" ? 2 : undefined);
+	}
+	assert.ok(points.filter((p) => p.name.startsWith("slate.model.")).every((p) => Number.isFinite(p.value) && p.value >= 0));
+	assert.ok(points.filter((p) => p.name === "slate.model.tokens").every((p) => Number.isInteger(p.value)));
+});
+
+test("one accounting record includes unmatched assistant usage, compaction, local and collected charges and overflow", () => {
+	for (const source of ["unmatched", "compaction", "charge", "collected", "worker-overflow", "compaction-overflow", "mixed-overflow", "token-overflow"]) {
+		const h = fixture(); h.install();
+		if (source === "unmatched") h.message({ cost: { total: -1 } });
+		if (source === "compaction") h.emit({ type: "compaction_end", result: { usage: { cost: { total: NaN } } } });
+		if (source.endsWith("overflow")) {
+			const u = source === "token-overflow" ? { input: Number.MAX_VALUE } : { cost: { total: Number.MAX_VALUE } };
+			h.call(); h.message(u);
+			if (source === "compaction-overflow") {
+				h.emit({ type: "compaction_end", result: { usage: u } });
+				h.emit({ type: "compaction_end", result: { usage: u } });
+			} else if (source === "mixed-overflow") h.emit({ type: "compaction_end", result: { usage: u } });
+			else { h.call(); h.message(u); }
+		}
+		h.dispatch.outcome("cancelled", source === "charge" ? -1 : undefined, undefined, source === "collected" ? Infinity : 0.125);
+		h.dispatch.finish("failed");
+		const a = h.of("dispatch", "end")[0]!.attributes;
+		assert.equal(a["slate.dispatch.invalid_accounting"], source === "token-overflow" ? "tokens" : "cost", source);
+		assert.equal(a["slate.dispatch.not_stored_cost.usd"], source === "token-overflow" ? 0.125 : undefined);
+	}
+	const h = fixture();
+	h.message({ input: -1 }); h.dispatch.cutoff();
+	h.emit({ type: "compaction_end", result: { usage: { cost: { total: -1 } } } });
+	h.dispatch.outcome("cancelled", undefined, undefined, 0.125); h.dispatch.finish("cancelled");
+	assert.equal(h.of("dispatch", "end")[0]!.attributes["slate.dispatch.invalid_accounting"], "both");
+});
+
+test("not-stored cost uses the supplied Slate accumulator, never a telemetry subtraction", () => {
+	const h = fixture(); h.install(); h.call(); h.message({ cost: { total: 0.125 } });
+	h.dispatch.outcome("cancelled", undefined, undefined, 0.75); h.dispatch.finish("failed");
+	assert.equal(h.of("dispatch", "end")[0]!.attributes["slate.dispatch.not_stored_cost.usd"], 0.75);
+});
+
+test("valid unknown, zero and partly known usage stay unmarked", () => {
+	for (const u of [{}, { input: 0, cost: { total: 0 } }, { output: 2 }, { cost: { total: 0.125 } }]) {
+		const h = fixture(); h.install(); h.call(); h.message(u);
+		h.dispatch.outcome("succeeded", 0); h.dispatch.finish("failed");
+		const a = h.of("dispatch", "end")[0]!.attributes;
+		assert.equal(a["slate.dispatch.invalid_accounting"], undefined);
+		assert.equal(a["slate.dispatch.not_stored_cost.usd"], "cost" in u ? 0 : undefined);
+	}
+});
+
 test("throttle waits and contract refusals are events, not requests, and do not consume request indexes", { timeout: 5000 }, async () => {
 	const h = fixture();
 	let now = 0, release: (() => void) | undefined;
