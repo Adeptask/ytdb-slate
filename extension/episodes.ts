@@ -38,6 +38,7 @@ import type { RecoveryAdmission, RecoveryCandidate } from "./logical-model-recov
 import type { LogicalModelEffort as ThinkingLevel } from "./logical-model-definitions.ts";
 import { sanitizeForNotify } from "./notify.ts";
 import type { ObservationRecord } from "./observations.ts";
+import { compressorAttempt, compressorRequest, type CompressorTelemetry } from "./telemetry/compressor.ts";
 // SE2: the episode file carries the SAME unsafe write pattern the observation
 // capture was found with — a predictable filename under the same tree, written
 // with recursive mkdir and writeFileSync — so both kinds now go through one safe
@@ -416,6 +417,7 @@ function hasAssistantMessage(messages: unknown[]): boolean {
 }
 
 export interface CompressEpisodeOptions {
+	observer?: CompressorTelemetry;
 	ctx: ExtensionContext;
 	runtimeFolder?: string;
 	episodeId: string;
@@ -523,6 +525,7 @@ async function attemptCompression(
 	policy: CompressorRetryPolicy | undefined,
 	signal: AbortSignal | undefined,
 	onMeasured: (response: unknown) => void,
+	observer?: CompressorTelemetry,
 ) {
 	const model = findModel(ctx, { provider: candidate.provider, id: candidate.model });
 	if (!model) return { kind: "unknown" as const, reason: "The validated compressor route disappeared from Pi's registry." };
@@ -532,7 +535,7 @@ async function attemptCompression(
 	let threw = false;
 	try {
 		final = await retryAssistantCall(
-			async () => {
+			() => compressorRequest(observer, async () => {
 				const response = await ctx.modelRegistry.streamSimple(model, {
 					messages: [{ role: "user", content: [{ type: "text", text: promptText }], timestamp: Date.now() }],
 				}, {
@@ -540,7 +543,7 @@ async function attemptCompression(
 				}).result();
 				onMeasured(response);
 				return evidence.response(response);
-			},
+			}),
 			policy,
 			signal,
 			evidence.callbacks,
@@ -640,6 +643,7 @@ export async function compressEpisode(opts: CompressEpisodeOptions): Promise<Com
 		const usage = (response as { usage?: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: { total?: number } } } | null)?.usage;
 		costUsd = addReportedCost(costUsd, usage?.cost?.total);
 		addReportedUsage(compressorUsage, reportedUsage(usage));
+		opts.observer?.measured(response, costUsd);
 	};
 	try {
 		let transcript = opts.completedFacts?.text;
@@ -653,8 +657,10 @@ export async function compressEpisode(opts: CompressEpisodeOptions): Promise<Com
 			candidates: opts.logicalRuntime.planCompressor(opts.admission.snapshot),
 			retainedToolResults: [],
 			validateSwitch: (candidate) => opts.logicalRuntime.validateRoute(ctx, candidate),
-			attempt: ({ candidate }) => attemptCompression(ctx, candidate, promptText, opts.retryPolicy, opts.signal, measured),
+			attempt: ({ candidate }) => compressorAttempt(opts.observer, candidate,
+				() => attemptCompression(ctx, candidate, promptText, opts.retryPolicy, opts.signal, measured, opts.observer)),
 		});
+		opts.observer?.finish(recovery.kind === "success" ? "succeeded" : recovery.kind === "cancelled" ? "cancelled" : "failed");
 		if (recovery.kind === "success") {
 			body = recovery.value;
 			compressor = `${recovery.candidate.provider}/${recovery.candidate.model}`;
@@ -666,6 +672,7 @@ export async function compressEpisode(opts: CompressEpisodeOptions): Promise<Com
 			failureNotice = `${recovery.reason} The bounded completed result was retained.`;
 		}
 	} catch (error) {
+		opts.observer?.finish("failed");
 		failureNotice = `Compression failed: ${sanitizeForNotify(error instanceof Error ? error.message : String(error), 200)}. The bounded completed result was retained.`;
 	}
 

@@ -26,7 +26,7 @@ export function flushFailures(): void {
 	state.pending.clear();
 }
 
-export type TelemetryKind = "session" | "run" | "turn" | "model" | "tool" | "dispatch" | "worker_attempt" | "worker_turn" | "worker_tool" | "worker_model_call" | "worker_compaction";
+export type TelemetryKind = "session" | "run" | "turn" | "model" | "tool" | "dispatch" | "worker_attempt" | "worker_turn" | "worker_tool" | "worker_model_call" | "worker_compaction" | "compressor" | "compressor_attempt" | "compressor_request";
 export type TelemetryAttributes = Partial<Record<
 	"slate.session.id" | "slate.session.instance_id" | "slate.change" | "slate.change.previous" | "slate.change.source" |
 	"slate.tool.call_id" | "slate.tool.parent_call_id" | "slate.tool.name" |
@@ -95,7 +95,7 @@ export class DispatchAccounting {
 		if (cost !== undefined && cost !== 0) this.invalidCost = true;
 		if (Object.entries(attributes).some(([key, value]) => key.startsWith("gen_ai.usage.") && value !== undefined && value !== 0)) this.invalidTokens = true;
 	}
-	collect(attributes: TelemetryAttributes, source: "worker" | "compaction"): void {
+	collect(attributes: TelemetryAttributes, source: "worker" | "compaction" | "compressor"): void {
 		this.check(attributes);
 		for (const [key, value] of Object.entries(attributes)) {
 			if (!validNumber(key, value)) continue;
@@ -177,7 +177,8 @@ export class Telemetry {
 			const parent = event.parentId ? this.spans.get(event.parentId) : undefined;
 			const context = parent ? trace.setSpan(ROOT_CONTEXT, parent) : ROOT_CONTEXT;
 			const name = event.kind === "dispatch" ? "slate.dispatch" : event.kind.startsWith("worker_")
-				? `slate.worker.${event.kind.slice(7)}` : `slate.orchestrator.${event.kind}`;
+				? `slate.worker.${event.kind.slice(7)}` : event.kind.startsWith("compressor")
+					? "slate." + event.kind.replace("_", ".") : `slate.orchestrator.${event.kind}`;
 			this.spans.set(event.id, trace.getTracer("slate", "1").startSpan(name,
 				{ attributes: event.attributes, startTime: new Date(event.time) }, context));
 			return;

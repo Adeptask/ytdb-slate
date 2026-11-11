@@ -3,6 +3,7 @@ import type { RecoveryExecutionInput } from "../logical-model-adapters.ts";
 import type { EpisodeRecord } from "../state.ts";
 import { DispatchAccounting, Telemetry, type TelemetryAttributes, type TelemetrySpan } from "./core.ts";
 import { WorkerTelemetry } from "./worker.ts";
+import { CompressorTelemetry } from "./compressor.ts";
 
 export type DispatchOutcome = "rejected" | "cancelled before start" | "aborted" | "cancelled" | "failed" | "succeeded" | "stored but failed";
 export const WORKER_IDENTITY_TYPE = "slate-worker-identity";
@@ -75,6 +76,11 @@ export class DispatchTelemetry {
 			}
 		} };
 	}
+	compressor(): CompressorTelemetry | undefined {
+		let observer: CompressorTelemetry | undefined;
+		this.telemetry.guard("observer", () => { observer = new CompressorTelemetry(this.telemetry, this.span, this.attributes, this.accounting); });
+		return observer;
+	}
 	cutoff(): void { this.telemetry.guard("observer", () => this.observer?.cutoff()); }
 	closeWorker(): void { this.observer?.finish(this.finalOutcome ?? "unknown"); }
 	route(model?: string, effort?: string): void {
@@ -82,13 +88,13 @@ export class DispatchTelemetry {
 			Object.assign(this.attributes, { "slate.dispatch.final_model": model, "slate.dispatch.final_effort": effort });
 		});
 	}
-	outcome(outcome: DispatchOutcome, cost?: number, episode?: EpisodeRecord, collectedCost?: number): void {
+	outcome(outcome: DispatchOutcome, cost?: number, episode?: EpisodeRecord, collectedCost?: number, notStoredCost?: number): void {
 		this.telemetry.guard("observer", () => {
 			this.accounting.check({ "slate.gen_ai.cost.usd": cost, "slate.dispatch.not_stored_cost.usd": collectedCost,
 				"gen_ai.usage.input_tokens": episode?.input, "gen_ai.usage.output_tokens": episode?.output,
 				"gen_ai.usage.cache_read.input_tokens": episode?.cacheRead, "gen_ai.usage.cache_creation.input_tokens": episode?.cacheWrite });
-			this.result ??= { "slate.dispatch.not_stored_cost.usd": cost !== undefined
-				? this.accounting.costKnown || cost > 0 ? 0 : undefined : collectedCost,
+			this.result ??= { "slate.dispatch.not_stored_cost.usd": notStoredCost ?? (cost !== undefined
+				? this.accounting.costKnown || cost > 0 ? 0 : undefined : collectedCost),
 				"slate.outcome": outcome, "slate.episode.recorded": episode ? "true" : "false",
 				"slate.gen_ai.cost.usd": cost, "gen_ai.usage.input_tokens": episode?.input,
 				"gen_ai.usage.output_tokens": episode?.output, "gen_ai.usage.cache_read.input_tokens": episode?.cacheRead,

@@ -1488,9 +1488,11 @@ export class ThreadManager {
 		}
 		const durableObservations = durableObservation(observation);
 
+		const compressorObserver = opts.telemetry?.compressor();
 		let compressed: Awaited<ReturnType<typeof compressEpisode>>;
 		try {
 			compressed = await compressEpisode({
+				observer: compressorObserver,
 				runtimeFolder: this.runtimeFolder,
 				ctx,
 				episodeId,
@@ -1533,7 +1535,9 @@ export class ThreadManager {
 			// prove ownership and must not delete that name.
 			const charge = usage.cost + (error instanceof EpisodePersistenceError ? (error.costUsd ?? 0) : 0) + (compactionCostUsd ?? 0);
 			this.store.workerCostUsd += charge;
-			opts.telemetry?.outcome("failed", charge);
+			compressorObserver?.finish("failed");
+			opts.telemetry?.outcome("failed", charge, undefined, undefined,
+				error instanceof EpisodePersistenceError ? undefined : compressorObserver?.collectedCost);
 			const actionFailure = diagnostics ?? "the worker action failed";
 			const storageCause = error instanceof EpisodePersistenceError ? error.originalError : undefined;
 			const storageDetail = storageCause === undefined

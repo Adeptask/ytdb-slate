@@ -10,8 +10,8 @@ import { SlateStore } from "../extension/state.ts";
 import { ThreadManager } from "../extension/threads.ts";
 import { registerSlateTools } from "../extension/tools.ts";
 import { registerTelemetry } from "../extension/telemetry/orchestrator.ts";
-import { FAILURE_KEY, type TelemetryEvent } from "../extension/telemetry/core.ts";
-import { WORKER_IDENTITY_TYPE } from "../extension/telemetry/dispatch.ts";
+import { Telemetry, FAILURE_KEY, type TelemetryEvent } from "../extension/telemetry/core.ts";
+import { DispatchTelemetry, WORKER_IDENTITY_TYPE } from "../extension/telemetry/dispatch.ts";
 import { normalizeContext } from "@earendil-works/pi-ai/compat";
 import { installWorkerRequestContract, type WorkerSession } from "../extension/worker.ts";
 import extension from "../extension/index.ts";
@@ -24,7 +24,7 @@ function deferred() {
 }
 type BillingUsage = { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: { total?: number } };
 function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; compaction: BillingUsage;
-	recovery?: BillingUsage; compactionDelivery?: "duplicate-without-start" }) {
+	recovery?: BillingUsage; compressor?: BillingUsage; script?: string[]; compactionDelivery?: "duplicate-without-start" }) {
 	const recovering = mode.includes("recovery");
 	const root = mkdtempSync(join(tmpdir(), "slate-dispatch-telemetry-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -51,8 +51,11 @@ function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; 
 	const entered = deferred(), release = deferred();
 	let followup: (() => void) | undefined, startFollowup: (() => void) | undefined;
 	const runtime = Object.freeze({ ...base,
+		planCompressor: billing?.compressor === undefined ? base.planCompressor : () => ["skip", "alpha", "beta"].map((provider) =>
+			({ logicalModel: `compress-${provider}`, provider, model: `model-${provider}`, kind: "compressor" as const, effort: "off" as const })),
 		planOrdinary: mode === "recovery-empty" ? () => { startFollowup!(); return []; } : base.planOrdinary,
-		async validateRoute() {
+		async validateRoute(_ctx: unknown, candidate: { provider: string }) {
+		if (candidate.provider === "skip") return { ok: false, kind: "unavailable", reason: "skip" } as const;
 		validation++;
 		if (validation === 4) {
 			if (mode === "recovery-gap") { entered.resolve(); await release.promise; }
@@ -68,6 +71,22 @@ function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; 
 	const parent = SessionManager.create(root, join(root, "parent"));
 	const ctx = { cwd: root, mode: "rpc", hasUI: false, sessionManager: parent,
 		modelRegistry: { find: (provider: string, id: string) => ({ provider, id, api: "openai-responses" }) } } as unknown as ExtensionContext;
+	let compressorCalls = 0;
+	if (billing?.compressor !== undefined) {
+		Object.assign(ctx.modelRegistry, { getApiKeyAndHeaders: async () => ({ ok: true }),
+			streamSimple: () => ({ result: async () => {
+				const step = billing.script?.[compressorCalls] ?? "success";
+				compressorCalls++;
+				if (step === "throw") throw Error("private provider failure");
+				if (step === "cancel") controller.abort();
+				if (step === "backoff") setImmediate(() => controller.abort());
+				return { role: "assistant", stopReason: step === "retry" || step === "backoff" || step === "terminal" ? "error"
+					: step === "cancel" ? "aborted" : "stop", errorMessage: step === "terminal" ? "invalid api key" : "temporary timeout",
+					content: step === "malformed" ? null : [{ type: "text", text: "## Intent\\nprivate compressed result" }],
+					usage: billing.compressor };
+			} }) });
+		(manager as any).compressorRetryPolicy = { enabled: true, maxRetries: 1, baseDelayMs: 100 };
+	}
 	observer?.sessionStart(ctx);
 	if (observer) {
 		registerSlateTools(pi, store, () => manager, observer.dispatch);
@@ -192,7 +211,7 @@ function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; 
 	}
 	const emit = async (name: string, event: any) => { for (const fn of handlers.get(name) ?? []) await fn(event, ctx); };
 	return { root, pi, get store() { return store; }, get manager() { return manager; }, observer, ctx, events, tools, sessions, controller, entered, release,
-		opens: () => opens, emit, followup: () => followup!(),
+		compressorCalls: () => compressorCalls, opens: () => opens, emit, followup: () => followup!(),
 		async call(id = "call", params: Record<string, unknown> = {}, parentToolCallId?: string) {
 			await emit("tool_execution_start", { toolCallId: id, toolName: "thread", parentToolCallId });
 			try {
@@ -204,7 +223,7 @@ function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; 
 	};
 }
 
-function checkAgreement(events: TelemetryEvent[], store: SlateStore, expectedCallIds: readonly string[]): string[] {
+function checkAgreement(events: TelemetryEvent[], store: SlateStore, expectedCallIds: readonly string[], unrecordedZeroCalls: readonly string[] = []): string[] {
 	const starts = new Map(events.filter((e) => e.phase === "start").map((e) => [e.id, e]));
 	const descends = (id: string, ancestor: string): boolean => {
 		while (id !== ancestor) {
@@ -228,16 +247,17 @@ function checkAgreement(events: TelemetryEvent[], store: SlateStore, expectedCal
 			// Eight rounding units per addition, scaled to these costs, not to one dollar.
 			const tolerance = 8 * Number.EPSILON * Math.max(Math.abs(actual), Math.abs(expected), Number.MIN_VALUE) * costs.length;
 			assert.ok(Math.abs(actual - expected) <= tolerance, `billed ${actual} != stored + not-stored ${expected}`);
-		} else assert.equal(notStored, undefined, "unknown is not zero");
+		} else assert.equal(notStored, unrecordedZeroCalls.includes(a["slate.tool.call_id"]!) ? 0 : undefined, "unknown is not zero");
 		const episode = store.episodes.get(a["slate.episode.id"]!);
 		if (episode) {
 			for (const [field, key] of [["input", "input_tokens"], ["output", "output_tokens"],
 				["cacheRead", "cache_read.input_tokens"], ["cacheWrite", "cache_creation.input_tokens"]] as const) {
-				for (const compaction of [false, true]) {
-					const values = billed.filter((e) => (e.kind === "worker_compaction") === compaction)
+				for (const source of ["worker_model_call", "worker_compaction", "compressor_request"]) {
+					const values = billed.filter((e) => e.kind === source)
 						.flatMap((e) => e.attributes[`gen_ai.usage.${key}`] === undefined ? [] : [e.attributes[`gen_ai.usage.${key}`]!]);
 					assert.equal(values.length ? values.reduce((n, v) => n + v, 0) : undefined,
-						compaction ? episode.compactionUsage?.[field] : episode[field], field);
+						source === "worker_compaction" ? episode.compactionUsage?.[field]
+							: source === "compressor_request" ? episode.compressorUsage?.[field] : episode[field], field);
 				}
 			}
 		}
@@ -246,6 +266,151 @@ function checkAgreement(events: TelemetryEvent[], store: SlateStore, expectedCal
 	assert.deepEqual([...checked].sort(), [...expectedCallIds].sort(), "no unmarked dispatch escapes the agreement");
 	return checked;
 }
+
+test("unadmitted zero usage satisfies agreement without converting unknown to zero", () => {
+	const events: TelemetryEvent[] = [], telemetry = new Telemetry((e) => events.push(e));
+	const dispatch = new DispatchTelemetry(telemetry, telemetry.start("tool", { "slate.tool.call_id": "zero" }));
+	dispatch.accounting.collect({ "slate.gen_ai.cost.usd": 0, "gen_ai.usage.input_tokens": 0 }, "worker");
+	dispatch.accounting.unrecorded({ "slate.gen_ai.cost.usd": 0, "gen_ai.usage.input_tokens": 0 });
+	dispatch.outcome("cancelled", undefined, undefined, 0); dispatch.finish("cancelled");
+	const store = { episodes: new Map() } as SlateStore;
+	checkAgreement(events, store, ["zero"], ["zero"]);
+	assert.throws(() => checkAgreement(events, store, ["zero"]), /unknown is not zero/);
+});
+
+test("compressor retry, recovery and every accounting exit agree with Slate collections", { timeout: 15000 }, async (t) => {
+	const billing = { worker: { input: 2, cost: { total: 0.375 } }, recovery: { output: 3, cost: { total: 0.625 } },
+		compaction: { output: 1, cost: { total: 0.125 } }, compressor: { input: 7, output: 4, cacheRead: 2, cacheWrite: 1, cost: { total: 0.25 } },
+		script: ["retry", "retry", "success"] };
+	for (const mode of ["ok", "failed", "storage", "stored-save", "empty", "empty-storage", "empty-stored-save",
+		"running-save", "busy", "abort", "abort-save", "cancel", "cancel-save", "startup-cancel",
+		"billed-cancel", "billed-cancel-facts", "billed-startup-abort", "billed-startup-abort-facts",
+		"billed-startup-cancel", "billed-startup-cancel-facts",
+		"recovery", "recovery-failed", "recovery-exhausted", "recovery-cancel", "recovery-storage", "recovery-stored-save"]) {
+		const h = fixture(t, mode, billing); await h.call(mode).catch(() => {});
+		checkAgreement(h.events, h.store, [mode]);
+		const calls = h.events.filter((e) => e.kind === "compressor_request" && e.phase === "usage");
+		assert.equal(calls.length, h.compressorCalls(), mode);
+		assert.equal(calls.reduce((n, e) => n + e.attributes["gen_ai.usage.input_tokens"]!, 0), 7 * calls.length, mode);
+		if (calls.length) {
+			assert.deepEqual(calls.map((e) => [e.attributes["slate.attempt.index"], e.attributes["slate.request.index"],
+				e.attributes["slate.logical_model"], e.attributes["gen_ai.provider.name"], e.attributes["gen_ai.request.model"]]),
+				[[0, 0, "compress-alpha", "alpha", "model-alpha"], [0, 1, "compress-alpha", "alpha", "model-alpha"],
+					[1, 0, "compress-beta", "beta", "model-beta"]].slice(0, h.controller.signal.aborted ? 1 : 3), mode);
+			assert.throws(() => checkAgreement(h.events.filter((e) => e !== calls[0]), h.store, [mode]));
+			assert.equal(h.events.find((e) => e.kind === "compressor" && e.phase === "end")!.attributes["slate.outcome"], h.controller.signal.aborted ? "cancelled" : "succeeded");
+		}
+		for (const start of h.events.filter((e) => e.kind.startsWith("compressor") && e.phase === "start")) {
+			assert.equal(h.events.filter((e) => e.id === start.id && e.phase === "end").length, 1);
+			const parent = h.events.find((e) => e.id === start.parentId && e.phase === "start")!;
+			assert.equal(parent.kind, start.kind === "compressor" ? "dispatch" : start.kind === "compressor_attempt" ? "compressor" : "compressor_attempt");
+		}
+		assert.equal(h.events.filter((e) => e.kind.startsWith("compressor") && e.phase === "admission").length, 0);
+		assert.ok(!JSON.stringify(h.events).includes("private compressed"));
+		await h.manager.disposeAll();
+	}
+});
+
+test("compressor cancellation copy, exhaustion, terminal, malformed and thrown results retain once-only bills", { timeout: 5000 }, async (t) => {
+	for (const script of [["backoff"], ["cancel"], ["retry", "retry", "retry", "retry"], ["terminal"], ["malformed"], ["throw"]]) {
+		const h = fixture(t, "ok", { worker: {}, compaction: {}, compressor: { input: 2, cost: { total: 0.25 } }, script });
+		const result = await h.call();
+		assert.equal(result.details.status, "ok");
+		checkAgreement(h.events, h.store, ["call"]);
+		assert.equal(h.events.filter((e) => e.kind === "compressor_request" && e.phase === "usage").length, script[0] === "throw" ? 0 : script.length);
+		assert.equal(h.outcomes()[0]!.attributes["slate.outcome"], "succeeded");
+		assert.equal(h.events.find((e) => e.kind === "compressor" && e.phase === "end")!.attributes["slate.outcome"],
+			script[0] === "backoff" || script[0] === "cancel" ? "cancelled" : "failed");
+		await h.manager.disposeAll();
+	}
+});
+
+test("unexpected compression exit retains Slate's collected compressor cost as not stored", async (t) => {
+	const h = fixture(t, "ok", { worker: { cost: { total: 0.375 } }, compaction: { cost: { total: 0.125 } },
+		compressor: { input: 7, cost: { total: 0.25 } } });
+	const iso = Date.prototype.toISOString;
+	t.mock.method(Date.prototype, "toISOString", function(this: Date) {
+		if (h.compressorCalls()) throw Error("header failure after billing");
+		return iso.call(this);
+	});
+	await assert.rejects(h.call());
+	assert.equal(h.store.workerCostUsd, 0.5);
+	assert.equal(h.outcomes()[0]!.attributes["slate.dispatch.not_stored_cost.usd"], 0.25);
+	assert.equal(h.store.episodes.size, 0); checkAgreement(h.events, h.store, ["call"]);
+	await h.manager.disposeAll();
+});
+
+test("compressor missing usage events mark nonzero values and output failures report once without marks", async (t) => {
+	const output: string[] = [];
+	t.mock.method(process.stderr, "write", ((s: string) => { output.push(s); return true; }) as any);
+	for (const mode of ["missing", "start-throw", "usage-throw", "outputs", "zero"]) {
+		const events: TelemetryEvent[] = [];
+		const telemetry = new Telemetry((e) => { events.push(e); if (mode === "outputs") throw Error("publication"); });
+		const dispatch = new DispatchTelemetry(telemetry);
+		const start = telemetry.start.bind(telemetry);
+		t.mock.method(telemetry, "start", (...[kind, ...args]: Parameters<Telemetry["start"]>) => {
+			if (kind === "compressor_request" && mode !== "outputs") {
+				if (mode === "start-throw") throw Error("start");
+				if (mode !== "usage-throw") return undefined;
+			}
+			return start(kind, ...args);
+		});
+		if (mode === "usage-throw") t.mock.method(telemetry, "usage", () => { throw Error("usage"); });
+		if (mode === "outputs") {
+			metrics.setGlobalMeterProvider({ getMeter() { throw Error("metrics"); } } as unknown as MeterProvider);
+			trace.setGlobalTracerProvider({ getTracer() { throw Error("spans"); } } as any);
+		}
+		const observer = dispatch.compressor()!;
+		for (let i = 0; i < 2; i++) {
+			await observer.attempt({ logicalModel: "compress", provider: "p", model: "m" }, () =>
+				observer.request(async () => {
+					observer.measured({ stopReason: "stop", usage: { input: mode === "zero" ? 0 : 2, cost: { total: mode === "zero" ? 0 : 0.25 } } }, 0.5);
+					return { kind: "success" };
+				}));
+		}
+		observer.finish("succeeded"); dispatch.outcome("succeeded", 0.5); dispatch.finish("succeeded");
+		assert.equal(events.find((e) => e.kind === "dispatch" && e.phase === "end")!.attributes["slate.dispatch.invalid_accounting"],
+			mode === "outputs" || mode === "zero" ? undefined : "both");
+		metrics.disable(); trace.disable();
+	}
+	for (const kind of ["observer", "spans", "metrics", "publication"]) {
+		assert.equal(output.filter((s) => s.includes(`telemetry ${kind} failed`)).length, 1, kind);
+	}
+});
+
+test("compressor unknown, zero, invalid values and sums share dispatch marks", async (t) => {
+	for (const compressor of [{}, { input: 0, cost: { total: 0 } }, { input: 1.5 }, { cost: { total: -1 } },
+		{ input: -1, cost: { total: NaN } }, { cost: { total: Number.MAX_VALUE } }] as BillingUsage[]) {
+		const overflow = compressor.cost?.total === Number.MAX_VALUE;
+		const h = fixture(t, "ok", { worker: overflow ? { cost: { total: Number.MAX_VALUE } } : {}, compaction: {}, compressor });
+		await h.call();
+		const mark = h.outcomes()[0]!.attributes["slate.dispatch.invalid_accounting"];
+		assert.equal(mark, compressor.input === -1 ? "both" : compressor.input === 1.5 ? "tokens"
+			: compressor.cost?.total ? "cost" : undefined);
+		if (!mark) checkAgreement(h.events, h.store, ["call"]);
+		else if (mark !== "tokens") assert.equal(h.outcomes()[0]!.attributes["slate.dispatch.not_stored_cost.usd"], undefined);
+		await h.manager.disposeAll();
+	}
+});
+
+test("parallel compressor sequences keep parents and accounting isolated and off preserves results", { timeout: 5000 }, async (t) => {
+	const run = async (enabled: boolean) => {
+		const previous = process.env.SLATE_TELEMETRY;
+		try {
+			process.env.SLATE_TELEMETRY = enabled ? "1" : "0";
+			const h = fixture(t, "parallel", { worker: {}, compaction: {}, compressor: { input: 7, cost: { total: 0.25 } } });
+			const a = h.call("a"), b = h.call("b"); await h.entered.promise;
+			while (h.opens() < 2) await new Promise<void>((done) => setImmediate(done));
+			h.release.resolve(); await Promise.all([a, b]);
+			if (enabled) checkAgreement(h.events, h.store, ["a", "b"]);
+			else assert.deepEqual(h.events, []);
+			const results = [...h.store.episodes.values()].map((e) => [e.status, e.input, e.compressorUsage, e.compressorCostUsd]);
+			await h.manager.disposeAll();
+			return { results, cost: h.store.workerCostUsd };
+		} finally { if (previous === undefined) delete process.env.SLATE_TELEMETRY; else process.env.SLATE_TELEMETRY = previous; }
+	};
+	assert.deepEqual(await run(true), await run(false));
+});
 
 test("per-dispatch billed cost and exact episode tokens agree across every accounting exit", async (t) => {
 	const points: Array<{ name: string; value: number; labels: Attributes }> = [];
