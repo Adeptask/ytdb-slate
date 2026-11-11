@@ -24,7 +24,8 @@ function deferred() {
 }
 type BillingUsage = { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: { total?: number } };
 function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; compaction: BillingUsage;
-	compactionDelivery?: "duplicate-without-start" }) {
+	recovery?: BillingUsage; compactionDelivery?: "duplicate-without-start" }) {
+	const recovering = mode.includes("recovery");
 	const root = mkdtempSync(join(tmpdir(), "slate-dispatch-telemetry-"));
 	t.after(() => rmSync(root, { recursive: true, force: true }));
 	const handlers = new Map<string, any[]>(), tools = new Map<string, any>(), events: TelemetryEvent[] = [];
@@ -45,11 +46,19 @@ function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; 
 	let validation = 0;
 	const base = createLogicalRuntime({ trusted: true, projectConfig: { router: { models: {
 		include: [], add: [{ model: "fixture", capabilityRating: 50, effort: "off", costRating: 50,
-			preferredProvider: "test", providers: { test: "worker", ...(mode === "recovery" ? { backup: "worker-2" } : {}) }, guidelines: [], cautions: [] }],
+			preferredProvider: "test", providers: { test: "worker", ...(recovering ? { backup: "worker-2" } : {}) }, guidelines: [], cautions: [] }],
 	} } } });
 	const entered = deferred(), release = deferred();
-	const runtime = Object.freeze({ ...base, async validateRoute() {
+	let followup: (() => void) | undefined, startFollowup: (() => void) | undefined;
+	const runtime = Object.freeze({ ...base,
+		planOrdinary: mode === "recovery-empty" ? () => { startFollowup!(); return []; } : base.planOrdinary,
+		async validateRoute() {
 		validation++;
+		if (validation === 4) {
+			if (mode === "recovery-gap") { entered.resolve(); await release.promise; }
+			if (mode === "recovery-unavailable") { startFollowup!(); return { ok: false, kind: "unavailable", reason: "unavailable" } as const; }
+			if (mode === "recovery-validation-fault") { startFollowup!(); throw Error("validation fault"); }
+		}
 		if ((mode === "admission-pause" || mode === "shutdown-admission") && validation === 1) { entered.resolve(); await release.promise; }
 		return mode.startsWith("abort") && validation > 1
 			? { ok: false, kind: "unavailable", reason: "route changed" } as const : { ok: true } as const;
@@ -77,7 +86,7 @@ function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; 
 		const listeners = new Set<(event: any) => void>();
 		const sessionManager = SessionManager.create(root, join(root, "workers"));
 		sessions.push(sessionManager);
-		let prompts = 0;
+		let prompts = 0, followupPending = false;
 		const send = (event: any) => { for (const fn of listeners) fn(event); };
 		const session = { agent: { streamFunction: (() => ({})) as unknown as WorkerSession["agent"]["streamFunction"] }, sessionManager, messages: [] as any[], model: { provider: "test", id: "worker" }, thinkingLevel: "off",
 			subscribe(fn: (event: any) => void) { listeners.add(fn); return () => listeners.delete(fn); },
@@ -86,7 +95,9 @@ function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; 
 			},
 			async setModel(model: { provider: string; id: string }) { session.model = model; },
 			async abort() { if (mode === "shutdown") { controller.abort(); release.resolve(); } },
-			closeManagedOperations() {}, async settleManagedOperations() {},
+			closeManagedOperations() {}, async settleManagedOperations() {
+				if (followupPending) { followupPending = false; bill(true, false, true); }
+			},
 			async shutdownWorker() {
 				if (mode === "cleanup-pause") { entered.resolve(); await release.promise; }
 				if (mode.startsWith("cleanup")) throw Error("cleanup");
@@ -99,27 +110,35 @@ function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; 
 					controller.abort(); throw Error("cancelled");
 				}
 				session.agent.streamFunction(session.model as Parameters<WorkerSession["agent"]["streamFunction"]>[0], normalizeContext({ messages: [] }));
-				send({ type: "tool_execution_start", toolCallId: "outer", toolName: "codemode" });
-				send({ type: "tool_execution_start", toolCallId: "inner", parentToolCallId: "outer", toolName: "read" });
+				if (mode !== "recovery-cancel") {
+					send({ type: "tool_execution_start", toolCallId: "outer", toolName: "codemode" });
+					send({ type: "tool_execution_start", toolCallId: "inner", parentToolCallId: "outer", toolName: "read" });
+				}
 				sessionManager.appendMessage({ role: "user", content: "private task", timestamp: 1 });
 				if (mode.startsWith("parallel") || mode === "shutdown") { entered.resolve(); await release.promise; }
 				if (mode === "shutdown" || mode === "cancel" || mode === "cancel-save") { controller.abort(); throw Error("cancelled"); }
-				if (mode.includes("storage")) writeFileSync(join(root, ".pi"), "block episode");
+				if (mode.includes("storage") && (!recovering || prompts > 1)) writeFileSync(join(root, ".pi"), "block episode");
 				if (mode.startsWith("empty")) throw Error("empty failure");
 				const message = { role: "assistant", provider: "test", model: "worker", api: "openai-responses",
-					stopReason: mode === "failed" || (mode === "recovery" && prompts === 1) ? "error" : "stop",
-					errorMessage: mode === "recovery" ? "temporary timeout" : mode === "failed" ? "private error" : undefined,
-					content: [{ type: "text", text: "private result" }], timestamp: 2,
-					usage: localBilling ? localBilling.worker : { input: 11, output: 7, cacheRead: 3, cacheWrite: 2, totalTokens: 23, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.3 } } };
+					stopReason: mode === "failed" || (recovering && (prompts === 1 || /failed|exhausted/.test(mode))) ? "error" : "stop",
+					errorMessage: recovering ? "temporary timeout" : mode === "failed" ? "private error" : undefined,
+					content: mode === "recovery-cancel" ? [] : [{ type: "text", text: "private result" }], timestamp: 2,
+					usage: localBilling ? prompts > 1 && billing?.recovery ? billing.recovery : localBilling.worker : { input: 11, output: 7, cacheRead: 3, cacheWrite: 2, totalTokens: 23, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.3 } } };
 				session.messages.push(message); sessionManager.appendMessage(message as any);
-				if (mode === "recovery" && prompts === 1) {
+				if (recovering && (prompts === 1 || mode === "recovery-exhausted")) {
 					send({ type: "agent_end", willRetry: true });
 					send({ type: "auto_retry_start", attempt: 1, maxAttempts: 1, errorMessage: "temporary timeout" });
 					send({ type: "agent_end", willRetry: false });
 					send({ type: "auto_retry_end", success: false, attempt: 1 });
 				}
+				if (mode !== "recovery-cancel") {
+					send({ type: "tool_execution_end", toolCallId: "inner", isError: false });
+					send({ type: "tool_execution_end", toolCallId: "outer", isError: false });
+				}
 				send({ type: "message_end", message });
 				compact();
+				send({ type: "turn_end" });
+				if (mode === "recovery-cancel" && prompts > 1) { controller.abort(); throw Error("cancelled"); }
 			},
 		};
 		const compact = () => {
@@ -129,8 +148,8 @@ function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; 
 			send(end);
 			if (duplicateWithoutStart) send(end);
 		};
-		const bill = (facts: boolean, cancelled = false) => {
-			session.agent.streamFunction(session.model as Parameters<WorkerSession["agent"]["streamFunction"]>[0], normalizeContext({ messages: [] }));
+		const bill = (facts: boolean, cancelled = false, admitted = false) => {
+			if (!admitted) session.agent.streamFunction(session.model as Parameters<WorkerSession["agent"]["streamFunction"]>[0], normalizeContext({ messages: [] }));
 			const message = { role: "assistant", provider: "test", model: "worker", api: "openai-responses",
 				content: facts ? [{ type: "text", text: "private startup" }] : [], timestamp: 2,
 				stopReason: cancelled ? "aborted" : "stop",
@@ -139,6 +158,8 @@ function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; 
 			send({ type: "message_end", message });
 			if (localBilling) compact();
 		};
+		startFollowup = () => { followupPending = true; session.agent.streamFunction(session.model as Parameters<WorkerSession["agent"]["streamFunction"]>[0], normalizeContext({ messages: [] })); };
+		followup = () => bill(true);
 		if (mode === "identity-failure") (sessionManager as any).appendCustomEntry = () => { throw Error("identity"); };
 		installWorkerRequestContract(session as unknown as WorkerSession, args.requestContract);
 		args.observeSession(session);
@@ -171,7 +192,7 @@ function fixture(t: TestContext, mode = "ok", billing?: { worker: BillingUsage; 
 	}
 	const emit = async (name: string, event: any) => { for (const fn of handlers.get(name) ?? []) await fn(event, ctx); };
 	return { root, pi, get store() { return store; }, get manager() { return manager; }, observer, ctx, events, tools, sessions, controller, entered, release,
-		opens: () => opens, emit,
+		opens: () => opens, emit, followup: () => followup!(),
 		async call(id = "call", params: Record<string, unknown> = {}, parentToolCallId?: string) {
 			await emit("tool_execution_start", { toolCallId: id, toolName: "thread", parentToolCallId });
 			try {
@@ -670,14 +691,115 @@ test("real recovery closes attempt zero before recovery turns and keeps old hand
 	const result = await h.call();
 	assert.equal(result.details.status, "ok");
 	const attempts = h.events.filter((e) => e.kind === "worker_attempt" && e.phase === "end");
-	assert.equal(attempts.length, 1);
-	assert.equal(attempts[0]!.attributes["slate.outcome"], "failed");
-	assert.equal(h.events.filter((e) => e.kind === "worker_turn" && e.phase === "start").length, 2, "startup and initial prompt only");
-	assert.equal(h.events.filter((e) => e.kind === "worker_tool" && e.phase === "start").length, 3);
+	assert.deepEqual(attempts.map((e) => [e.attributes["slate.attempt.index"], e.attributes["slate.outcome"]]), [[0, "failed"], [1, "succeeded"]]);
+	assert.equal(h.events.filter((e) => e.kind === "worker_turn" && e.phase === "start").length, 3);
+	assert.equal(h.events.filter((e) => e.kind === "worker_tool" && e.phase === "start").length, 5);
+	checkAgreement(h.events, h.store, ["call"]);
 	for (const start of h.events.filter((e) => e.kind.startsWith("worker_") && e.phase === "start")) {
 		assert.equal(h.events.filter((e) => e.id === start.id && e.phase === "end").length, 1);
 	}
 	assert.ok(h.events.indexOf(attempts[0]!) < h.events.indexOf(h.outcomes()[0]!));
+});
+
+test("requests admitted during recovery validation belong to attempt zero and agree with dispatch billing", { timeout: 5000 }, async (t) => {
+	const h = fixture(t, "recovery-gap", { worker: { input: 2, cost: { total: 0.375 } },
+		recovery: { input: 4, cost: { total: 0.625 } }, compaction: { output: 1, cost: { total: 0.125 } } });
+	const pending = h.call();
+	await h.entered.promise;
+	h.followup();
+	h.release.resolve();
+	assert.equal((await pending).details.status, "ok");
+	checkAgreement(h.events, h.store, ["call"]);
+	const calls = h.events.filter((e) => e.kind === "worker_model_call" && e.phase === "usage");
+	assert.deepEqual(calls.map((e) => [e.attributes["slate.attempt.index"], e.attributes["slate.request.index"],
+		e.attributes["gen_ai.provider.name"], e.attributes["slate.gen_ai.cost.usd"]]),
+		[[0, 0, "test", 0.375], [0, 1, "test", 0.375], [1, 0, "backup", 0.625]]);
+	assert.equal(h.store.workerCostUsd, 1.75);
+	await h.manager.disposeAll();
+});
+
+test("included requests remain billed when recovery attempts no candidate", { timeout: 5000 }, async (t) => {
+	for (const mode of ["recovery-empty", "recovery-unavailable", "recovery-validation-fault"]) {
+		const h = fixture(t, mode, { worker: { input: 2, cost: { total: 0.375 } }, compaction: { output: 1, cost: { total: 0.125 } } });
+		assert.equal((await h.call()).details.status, "failed", mode);
+		checkAgreement(h.events, h.store, ["call"]);
+		assert.equal(h.store.workerCostUsd, 1, mode);
+		assert.deepEqual(h.events.filter((e) => e.kind === "worker_attempt" && e.phase === "start")
+			.map((e) => e.attributes["slate.attempt.index"]), [0], mode);
+		assert.deepEqual(h.events.filter((e) => e.kind === "worker_model_call" && e.phase === "usage")
+			.map((e) => [e.attributes["slate.attempt.index"], e.attributes["slate.request.index"]]), [[0, 0], [0, 1]], mode);
+		await h.manager.disposeAll();
+	}
+});
+
+test("recovery extends per-dispatch agreement to every exit without compressor spend", async (t) => {
+	const billing = { worker: { input: 2, output: 1, cost: { total: 0.375 } },
+		recovery: { input: 4, cacheRead: 2, cost: { total: 0.625 } }, compaction: { output: 2, cost: { total: 0.125 } } };
+	for (const [mode, outcome] of [["recovery", "succeeded"], ["recovery-failed", "failed"],
+		["recovery-exhausted", "failed"], ["recovery-cancel", "cancelled"], ["recovery-storage", "failed"],
+		["recovery-stored-save", "stored but failed"]] as const) {
+		const h = fixture(t, mode, billing); await h.call(mode).catch(() => {});
+		assert.equal(h.outcomes()[0]!.attributes["slate.outcome"], outcome, mode);
+		assert.equal(h.store.workerCostUsd, mode === "recovery-cancel" ? 0 : 1.25, mode);
+		checkAgreement(h.events, h.store, [mode]);
+		const attempts = h.events.filter((e) => e.kind === "worker_attempt" && e.phase === "start");
+		assert.deepEqual(attempts.map((e) => e.attributes["slate.attempt.index"]), [0, 1]);
+		const calls = h.events.filter((e) => e.kind === "worker_model_call" && e.phase === "usage");
+		assert.deepEqual(calls.map((e) => [e.attributes["slate.attempt.index"], e.attributes["slate.request.index"],
+			e.attributes["gen_ai.provider.name"], e.attributes["gen_ai.request.model"]]), [[0, 0, "test", "worker"], [1, 0, "backup", "worker-2"]]);
+		const compactions = h.events.filter((e) => e.kind === "worker_compaction" && e.phase === "usage");
+		assert.deepEqual(compactions.map((e) => e.attributes["slate.attempt.index"]), [0, 1]);
+		assert.throws(() => checkAgreement(h.events.filter((e) => e !== compactions[1]), h.store, [mode]));
+		await h.manager.disposeAll();
+	}
+});
+
+test("recovery unknown, zero and invalid quantities share the dispatch accounting boundary", async (t) => {
+	for (const recovery of [{}, { input: 0, cost: { total: 0 } }, { input: 1.5 }, { cost: { total: -1 } },
+		{ input: "4" }, { cost: { total: Number.MAX_VALUE } }] as BillingUsage[]) {
+		const overflow = recovery.cost?.total === Number.MAX_VALUE;
+		const h = fixture(t, "recovery", { worker: overflow ? { cost: { total: Number.MAX_VALUE } } : {}, recovery, compaction: {} });
+		await h.call();
+		const mark = h.outcomes()[0]!.attributes["slate.dispatch.invalid_accounting"];
+		if (recovery.input && recovery.input !== 0) assert.equal(mark, "tokens");
+		else if (recovery.cost?.total) assert.equal(mark, "cost");
+		else { assert.equal(mark, undefined); checkAgreement(h.events, h.store, ["call"]); }
+		await h.manager.disposeAll();
+	}
+});
+
+test("parallel recoveries keep attempt parents, route labels and bills isolated", async (t) => {
+	const h = fixture(t, "parallel-recovery");
+	const a = h.call("a"), b = h.call("b");
+	await h.entered.promise;
+	while (h.opens() < 2) await new Promise<void>((done) => setImmediate(done));
+	h.release.resolve(); await Promise.all([a, b]);
+	checkAgreement(h.events, h.store, ["a", "b"]);
+	const starts = new Map(h.events.filter((e) => e.phase === "start").map((e) => [e.id, e]));
+	for (const start of starts.values()) {
+		if (!start.kind.startsWith("worker_")) continue;
+		const parent = starts.get(start.parentId!)!;
+		if (start.kind === "worker_attempt") assert.equal(parent.kind, "dispatch");
+		else assert.equal(parent.attributes["slate.thread.id"], start.attributes["slate.thread.id"]);
+		if (start.kind !== "worker_attempt") assert.equal(parent.attributes["slate.attempt.index"], start.attributes["slate.attempt.index"]);
+	}
+	assert.equal(h.events.filter((e) => e.kind === "worker_attempt" && e.phase === "start").length, 4);
+	await h.manager.disposeAll();
+});
+
+test("telemetry off preserves recovery results and Slate cost and tokens", async (t) => {
+	const run = async (enabled: boolean) => {
+		const previous = process.env.SLATE_TELEMETRY;
+		try {
+			process.env.SLATE_TELEMETRY = enabled ? "1" : "0";
+			const h = fixture(t, "recovery"); const result = await h.call();
+			if (!enabled) assert.deepEqual(h.events, []);
+			const episode = [...h.store.episodes.values()][0]!;
+			await h.manager.disposeAll();
+			return { status: result.details.status, cost: h.store.workerCostUsd, input: episode.input, output: episode.output, compaction: episode.compactionUsage };
+		} finally { if (previous === undefined) delete process.env.SLATE_TELEMETRY; else process.env.SLATE_TELEMETRY = previous; }
+	};
+	assert.deepEqual(await run(true), await run(false));
 });
 
 test("parallel workers with identical tool ids keep distinct attempt and turn parents", { timeout: 5000 }, async (t) => {

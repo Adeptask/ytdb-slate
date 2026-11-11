@@ -99,7 +99,7 @@ test("worker spans exclude the nested orchestrator thread tool identity but keep
 	balanced(h.events);
 });
 
-test("cutoff excludes new work and preserves already-started operations until their result", () => {
+test("cutoff excludes new turn and tool spans and keeps the current attempt open for included billing", () => {
 	const h = fixture();
 	h.emit({ type: "turn_start" });
 	h.emit({ type: "tool_execution_start", toolCallId: "outer", toolName: "codemode" });
@@ -115,7 +115,7 @@ test("cutoff excludes new work and preserves already-started operations until th
 	assert.equal(h.of("worker_tool").length, 1);
 	assert.equal(h.of("worker_tool")[0]!.attributes["slate.outcome"], "succeeded");
 	assert.equal(h.of("worker_attempt")[0]!.attributes["slate.outcome"], "failed");
-	assert.ok(h.events.indexOf(h.of("worker_attempt")[0]!) < h.events.indexOf(h.of("worker_tool")[0]!));
+	assert.ok(h.events.indexOf(h.of("worker_attempt")[0]!) > h.events.indexOf(h.of("worker_tool")[0]!));
 	balanced(h.events);
 });
 

@@ -90,6 +90,11 @@ export class DispatchAccounting {
 			else if (key.endsWith("cost.usd")) this.invalidCost = true;
 		}
 	}
+	unrecorded(attributes: TelemetryAttributes): void {
+		const cost = attributes["slate.gen_ai.cost.usd"];
+		if (cost !== undefined && cost !== 0) this.invalidCost = true;
+		if (Object.entries(attributes).some(([key, value]) => key.startsWith("gen_ai.usage.") && value !== undefined && value !== 0)) this.invalidTokens = true;
+	}
 	collect(attributes: TelemetryAttributes, source: "worker" | "compaction"): void {
 		this.check(attributes);
 		for (const [key, value] of Object.entries(attributes)) {

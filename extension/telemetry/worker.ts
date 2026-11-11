@@ -1,5 +1,6 @@
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import { DispatchAccounting, Telemetry, type TelemetryAttributes, type TelemetrySpan } from "./core.ts";
+import type { RecoveryCandidate } from "../logical-model-recovery.ts";
 import { observeRequests, type RequestObservation } from "./request.ts";
 
 type CollectedUsage = { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: { total?: number } };
@@ -15,13 +16,17 @@ export class WorkerTelemetry {
 	private accepting = true;
 	private ended = false;
 	private index = 0;
-	private requestIndex = 0;
+	private requests = { index: 0 };
+	private attemptIndex = 0;
+	private parent?: TelemetrySpan;
+	private turns = new Set<TelemetrySpan>();
 	private calls = new Set<Call>();
 	private billing: Call[] = [];
-	private compaction?: { span?: TelemetrySpan };
+	private compaction?: { span?: TelemetrySpan; attributes: TelemetryAttributes; requests: { index: number } };
 	private seenCompactions = new WeakSet<object>();
 	private stopRequests?: () => void;
 	private attempt?: TelemetrySpan;
+	private attemptOutcome?: string;
 	private turn?: TelemetrySpan;
 	private tools = new Map<string, TelemetrySpan | undefined>();
 	private unsubscribe?: () => void;
@@ -29,6 +34,7 @@ export class WorkerTelemetry {
 	private accounting: DispatchAccounting;
 	private attributes: TelemetryAttributes;
 	constructor(telemetry: Telemetry, parent: TelemetrySpan | undefined, attributes: TelemetryAttributes, session: Pick<AgentSession, "subscribe">, privateAccounting = parent?.accounting ?? new DispatchAccounting()) {
+		this.parent = parent;
 		this.accounting = privateAccounting;
 		this.telemetry = telemetry;
 		this.attributes = Object.fromEntries(Object.entries({ ...parent?.attributes, ...attributes, "slate.attempt.index": 0 })
@@ -47,6 +53,7 @@ export class WorkerTelemetry {
 	private request(): RequestObservation {
 		const parent = this.turn ?? this.attempt;
 		let admitted = false, waited = false, refused = false;
+		let call: Call | undefined;
 		return {
 			wait: () => this.telemetry.guard("observer", () => {
 				if (this.accepting && !waited) { waited = true; this.telemetry.admission(parent, "wait"); }
@@ -55,37 +62,37 @@ export class WorkerTelemetry {
 				if (this.accepting && !admitted && !refused) { refused = true; this.telemetry.admission(parent, "refused"); }
 			}),
 			admit: (model) => {
-				let span: TelemetrySpan | undefined;
+				if (this.ended) return undefined;
+				admitted = true;
+				const compaction = this.compaction;
+				// Keep a queue position even when span creation fails.
+				call = { compaction: compaction !== undefined };
+				this.calls.add(call);
+				if (!call.compaction) this.billing.push(call);
 				this.telemetry.guard("observer", () => {
-					admitted = true;
-					if (!this.accepting) return;
-					span = this.telemetry.start("worker_model_call", { ...this.attributes,
+					call!.span = this.telemetry.start("worker_model_call", { ...(compaction?.attributes ?? this.attributes),
 						"gen_ai.provider.name": model.provider, "gen_ai.request.model": model.id,
-						"slate.request.index": this.requestIndex++ }, parent);
-					const call = { span, compaction: this.compaction !== undefined };
-					this.calls.add(call);
-					if (!call.compaction) this.billing.push(call);
+						"slate.request.index": (compaction?.requests ?? this.requests).index++ }, compaction ? compaction.span : this.turn ?? this.attempt);
 				});
-				return span;
+				return call.span;
 			},
-			failed: (span) => this.telemetry.guard("observer", () => {
-				const call = [...this.calls].find((call) => call.span === span);
-				if (!call) return;
-				this.calls.delete(call);
-				this.billing = this.billing.filter((candidate) => candidate !== call);
+			failed: () => this.telemetry.guard("observer", () => {
+				if (!call || !this.calls.delete(call)) return;
 				this.end(call.span, "failed");
+				// Pi emits an assistant failure even when the stream function throws.
+				call.span = undefined;
 			}),
-			returned: (span, value) => this.telemetry.guard("observer", () => {
-				const call = [...this.calls].find((call) => call.span === span);
-				if (!call?.compaction) return;
+			returned: (_span, value) => this.telemetry.guard("observer", () => {
+				const current = call;
+				if (!current?.compaction) return;
 				// Pi's result promise observes completion without consuming its iterator.
 				void Promise.resolve(value).then((stream) => this.telemetry.guard("observer", () => {
 					void Promise.resolve((stream as { result(): Promise<{ stopReason?: string }> }).result())
 						.then((message) => this.telemetry.guard("observer", () => {
-							this.completeCompactionCall(call, message.stopReason === "error" ? "failed"
+							this.completeCompactionCall(current, message.stopReason === "error" ? "failed"
 								: message.stopReason === "aborted" ? "cancelled" : "succeeded");
-						})).catch(() => this.completeCompactionCall(call, "failed"));
-				})).catch(() => this.completeCompactionCall(call, "failed"));
+						})).catch(() => this.completeCompactionCall(current, "failed"));
+				})).catch(() => this.completeCompactionCall(current, "failed"));
 			}),
 		};
 	}
@@ -95,37 +102,44 @@ export class WorkerTelemetry {
 			this.end(call.span, outcome);
 		});
 	}
+	private usage(span: TelemetrySpan | undefined, attributes: TelemetryAttributes): void {
+		try { this.telemetry.usage(span, attributes); }
+		catch (error) { this.accounting.unrecorded(attributes); throw error; }
+		if (!span) this.accounting.unrecorded(attributes);
+	}
 	private observe(event: AgentSessionEvent): void {
 		if (event.type === "message_end" && event.message.role === "assistant") {
-			this.accounting.collect(usageAttributes(event.message.usage), "worker");
+			const attributes = usageAttributes(event.message.usage);
+			this.accounting.collect(attributes, "worker");
 			const call = this.billing.shift();
-			if (!call) return;
+			if (!call?.span) { this.accounting.unrecorded(attributes); return; }
 			this.calls.delete(call);
-			this.telemetry.usage(call.span, usageAttributes(event.message.usage));
+			this.usage(call.span, attributes);
 			this.end(call.span, event.message.stopReason === "error" ? "failed"
 				: event.message.stopReason === "aborted" ? "cancelled" : "succeeded");
 		} else if (event.type === "compaction_start") {
-			if (!this.accepting) return;
 			this.end(this.compaction?.span, "incomplete");
-			this.compaction = { span: this.telemetry.start("worker_compaction", this.attributes, this.turn ?? this.attempt) };
+			const compaction = { attributes: this.attributes, requests: this.requests, span: undefined as TelemetrySpan | undefined };
+			this.compaction = compaction;
+			compaction.span = this.telemetry.start("worker_compaction", this.attributes, this.turn ?? this.attempt);
 		} else if (event.type === "compaction_end") {
 			if (this.seenCompactions.has(event)) return;
 			this.seenCompactions.add(event);
 			const attributes = usageAttributes(event.result?.usage);
 			this.accounting.collect(attributes, "compaction");
 			const compaction = this.compaction; this.compaction = undefined;
-			if (!compaction && !this.accepting) return;
 			// Slate also collects a completion whose start was not observed.
-			const span = compaction?.span ?? this.telemetry.start("worker_compaction", this.attributes, this.turn ?? this.attempt);
-			this.telemetry.usage(span, attributes);
+			const span = compaction ? compaction.span : this.telemetry.start("worker_compaction", this.attributes, this.turn ?? this.attempt);
+			this.usage(span, attributes);
 			this.telemetry.end(span, { "slate.outcome": event.aborted ? "cancelled" : event.result ? "succeeded" : "failed" }, Date.now(), compaction !== undefined);
 		} else if (event.type === "turn_start") {
 			if (!this.accepting) return;
-			const previous = this.turn; this.turn = undefined;
-			this.end(previous, "incomplete");
 			this.turn = this.telemetry.start("worker_turn", { ...this.attributes, "slate.turn.index": this.index++ }, this.attempt);
+			if (this.turn) this.turns.add(this.turn);
 		} else if (event.type === "turn_end") {
-			const turn = this.turn; this.turn = undefined;
+			const turn = this.turns.values().next().value;
+			if (turn) this.turns.delete(turn);
+			if (turn === this.turn) this.turn = undefined;
 			this.end(turn);
 		} else if (event.type === "tool_execution_start") {
 			if (!this.accepting || this.tools.has(event.toolCallId)) return;
@@ -142,11 +156,28 @@ export class WorkerTelemetry {
 			this.end(tool, event.isError ? "failed" : "succeeded");
 		}
 	}
-	/** Recovery owns subsequent starts. Existing operations retain their handles. */
+	/** Included requests and compactions retain the current attempt until a fallback starts. */
 	cutoff(): void {
 		this.accepting = false;
-		const attempt = this.attempt; this.attempt = undefined;
-		this.end(attempt, "failed");
+		this.attemptOutcome ??= "failed";
+	}
+	/** Candidate callbacks contain only fallbacks, so recovery indexes start at one. */
+	recover(candidate: RecoveryCandidate): void {
+		if (this.ended) return;
+		this.cutoff();
+		this.end(this.attempt, this.attemptOutcome);
+		this.attemptOutcome = undefined;
+		this.turn = undefined;
+		this.requests = { index: 0 };
+		this.attributes = { ...this.attributes, "slate.attempt.index": ++this.attemptIndex,
+			"slate.logical_model": candidate.logicalModel, "gen_ai.provider.name": candidate.provider,
+			"gen_ai.request.model": candidate.model };
+		this.attempt = this.telemetry.start("worker_attempt", this.attributes, this.parent);
+		this.accepting = true;
+	}
+	endRecovery(outcome: string): void {
+		// Included work can still start while Slate settles the same worker session.
+		this.attemptOutcome = outcome;
 	}
 	finish(outcome: string): void {
 		if (this.ended) return;
@@ -162,9 +193,10 @@ export class WorkerTelemetry {
 		this.telemetry.guard("observer", () => unsubscribe?.());
 		for (const tool of [...this.tools.values()].reverse()) this.end(tool, "incomplete");
 		this.tools.clear();
-		const turn = this.turn; this.turn = undefined;
-		this.end(turn, "incomplete");
+		this.turn = undefined;
+		for (const turn of this.turns) this.end(turn, "incomplete");
+		this.turns.clear();
 		const attempt = this.attempt; this.attempt = undefined;
-		this.end(attempt, outcome);
+		this.end(attempt, this.attemptOutcome ?? outcome);
 	}
 }

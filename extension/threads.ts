@@ -16,6 +16,7 @@ import { basename } from "node:path";
 import {
 	type ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
+import { observeRecovery } from "./telemetry/dispatch.ts";
 import { WorkerRetryEvidence, executeRecovery, type CompressorRetryPolicy } from "./logical-model-adapters.ts";
 import type { LogicalRuntime } from "./logical-model-runtime.ts";
 import type { RecoveryAdmission, RecoveryCandidate } from "./logical-model-recovery.ts";
@@ -1119,7 +1120,7 @@ export class ThreadManager {
 				const retainedToolResults = recoverySession.messages.slice(messagesBefore).filter((message) => (message as { role?: unknown }).role === "toolResult");
 				const recoveryAttempts = new Set<WorkerAssistantMsg>();
 				if (outcome.final !== undefined) recoveryAttempts.add(outcome.final);
-				const recovery = await executeRecovery({
+				const recovery = await executeRecovery(observeRecovery(opts.telemetry, {
 					candidates: this.logicalRuntime.planOrdinary(logicalRoute.logicalModel, admission.snapshot, logicalRoute),
 					retainedToolResults,
 					validateSwitch: (candidate) => this.logicalRuntime!.validateRoute(ctx, candidate),
@@ -1167,7 +1168,7 @@ export class ThreadManager {
 						if (classified.kind === "retry-exhausted" && retryOutcome.final !== undefined) recoveryAttempts.add(retryOutcome.final);
 						return classified;
 					},
-				});
+				}));
 				if (recovery.kind === "success") {
 					// Every exhausted route is one attempt in this ordinary recovery chain.
 					// Leave failures from other included work in their observed order.

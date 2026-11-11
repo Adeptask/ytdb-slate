@@ -1,10 +1,14 @@
 import type { AgentSession, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { RecoveryExecutionInput } from "../logical-model-adapters.ts";
 import type { EpisodeRecord } from "../state.ts";
 import { DispatchAccounting, Telemetry, type TelemetryAttributes, type TelemetrySpan } from "./core.ts";
 import { WorkerTelemetry } from "./worker.ts";
 
 export type DispatchOutcome = "rejected" | "cancelled before start" | "aborted" | "cancelled" | "failed" | "succeeded" | "stored but failed";
 export const WORKER_IDENTITY_TYPE = "slate-worker-identity";
+export function observeRecovery<T, R>(dispatch: DispatchTelemetry | undefined, input: RecoveryExecutionInput<T, R>): RecoveryExecutionInput<T, R> {
+	return dispatch?.recovery(input) ?? input;
+}
 
 /** One call owns this handle. No ambient context or shared accounting is sampled. */
 export class DispatchTelemetry {
@@ -58,7 +62,20 @@ export class DispatchTelemetry {
 			if (this.identity) { const identity = this.identity; this.identity = undefined; session.sessionManager.appendCustomEntry(WORKER_IDENTITY_TYPE, identity); }
 		});
 	}
-	cutoff(): void { this.observer?.cutoff(); }
+	recovery<T, R>(input: RecoveryExecutionInput<T, R>): RecoveryExecutionInput<T, R> {
+		return { ...input, attempt: async (context) => {
+			this.telemetry.guard("observer", () => this.observer?.recover(context.candidate));
+			let outcome = "failed";
+			try {
+				const result = await input.attempt(context);
+				outcome = result.kind === "success" ? "succeeded" : result.kind === "cancelled" ? "cancelled" : "failed";
+				return result;
+			} finally {
+				this.telemetry.guard("observer", () => this.observer?.endRecovery(outcome));
+			}
+		} };
+	}
+	cutoff(): void { this.telemetry.guard("observer", () => this.observer?.cutoff()); }
 	closeWorker(): void { this.observer?.finish(this.finalOutcome ?? "unknown"); }
 	route(model?: string, effort?: string): void {
 		this.telemetry.guard("observer", () => {

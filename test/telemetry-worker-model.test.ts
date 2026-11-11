@@ -8,6 +8,9 @@ import { DispatchTelemetry } from "../extension/telemetry/dispatch.ts";
 import { createWorkerRequestContract, installRequestThrottle, installWorkerRequestContract, type WorkerSession } from "../extension/worker.ts";
 import { createRequestThrottle, RequestThrottleAbort, REQUEST_THROTTLE_DEFAULTS } from "../extension/request-throttle.ts";
 import { requestObservation } from "../extension/telemetry/request.ts";
+import { WorkerTelemetry } from "../extension/telemetry/worker.ts";
+import { executeRecovery } from "../extension/logical-model-adapters.ts";
+import type { RecoveryCandidate } from "../extension/logical-model-recovery.ts";
 
 afterEach(() => { metrics.disable(); trace.disable(); Reflect.deleteProperty(globalThis, FAILURE_KEY); });
 const model = { provider: "p", id: "m", api: "openai-responses" } as Parameters<WorkerSession["agent"]["streamFunction"]>[0];
@@ -182,6 +185,56 @@ test("valid unknown, zero and partly known usage stay unmarked", () => {
 	}
 });
 
+test("unrecorded usage marks only known quantities and cannot consume the next request span", (t) => {
+	for (const [u, mark] of [[{}, undefined], [{ cost: { total: 0.125 } }, "cost"], [{ input: 2 }, "tokens"], [usage, "both"]] as const) {
+		const h = fixture(); h.install(); h.dispatch.cutoff();
+		const start = h.telemetry.start.bind(h.telemetry);
+		let calls = 0;
+		t.mock.method(h.telemetry, "start", (...[kind, ...args]: Parameters<Telemetry["start"]>) => {
+			if (kind === "worker_model_call" && calls++ === 0) throw Error("observer start");
+			return start(kind, ...args);
+		});
+		h.call(); h.call();
+		h.message(u); h.message({ input: 4, cost: { total: 0.5 } });
+		assert.equal(h.of("worker_model_call", "usage").length, 1);
+		assert.equal(h.of("worker_model_call", "usage")[0]!.id, h.of("worker_model_call")[0]!.id);
+		assert.equal(h.of("worker_model_call", "usage")[0]!.attributes["slate.request.index"], 1);
+		assert.equal(h.of("worker_model_call", "usage")[0]!.attributes["slate.gen_ai.cost.usd"], 0.5);
+		h.dispatch.finish("failed");
+		assert.equal(h.of("dispatch", "end")[0]!.attributes["slate.dispatch.invalid_accounting"], mark);
+	}
+	const unmatched = fixture(); unmatched.message({ cost: { total: 0.125 } }); unmatched.dispatch.finish("failed");
+	assert.equal(unmatched.of("dispatch", "end")[0]!.attributes["slate.dispatch.invalid_accounting"], "cost");
+});
+
+test("unadmitted failure completion with Pi zero usage keeps dispatch accounting valid", () => {
+	const h = fixture();
+	h.message({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, "aborted");
+	h.dispatch.outcome("cancelled", undefined, undefined, 0); h.dispatch.finish("cancelled");
+	const attributes = h.of("dispatch", "end")[0]!.attributes;
+	assert.equal(attributes["slate.dispatch.invalid_accounting"], undefined);
+	assert.equal(attributes["slate.dispatch.not_stored_cost.usd"], 0);
+	assert.equal(h.of("worker_model_call").length, 0);
+});
+
+test("failed request positions and missing compaction spans cannot take later assistant billing", (t) => {
+	const h = fixture(); h.install();
+	const failed = requestObservation(h.session)!; const span = failed.admit(model); failed.failed(span);
+	h.call(); h.message({}); h.message({ cost: { total: 0.5 } });
+	assert.equal(h.of("worker_model_call", "usage")[0]!.attributes["slate.request.index"], 1);
+	h.dispatch.finish("failed"); balanced(h.events);
+	const compact = fixture(); compact.install();
+	const start = compact.telemetry.start.bind(compact.telemetry);
+	t.mock.method(compact.telemetry, "start", (...[kind, ...args]: Parameters<Telemetry["start"]>) => kind === "worker_compaction" ? undefined : start(kind, ...args));
+	compact.emit({ type: "compaction_start" }); compact.call();
+	compact.emit({ type: "compaction_end", result: { usage } });
+	compact.call(); compact.message({ cost: { total: 0.5 } }); compact.dispatch.finish("failed");
+	assert.equal(compact.of("worker_model_call", "usage").length, 1);
+	assert.equal(compact.of("worker_model_call", "usage")[0]!.attributes["slate.request.index"], 1);
+	assert.equal(compact.of("dispatch", "end")[0]!.attributes["slate.dispatch.invalid_accounting"], "both");
+});
+
 test("throttle waits and contract refusals are events, not requests, and do not consume request indexes", { timeout: 5000 }, async () => {
 	const h = fixture();
 	let now = 0, release: (() => void) | undefined;
@@ -293,13 +346,127 @@ test("shared throttle keeps the waiting dispatch parent, per-attempt indexes and
 	assert.deepEqual(on.order, ["a", "b", "b", "a"]); assert.deepEqual(on, off);
 });
 
-test("cutoff keeps in-flight usage and excludes later requests, compactions and metrics", () => {
+test("cutoff keeps in-flight and newly admitted requests and compactions billed on the current attempt", () => {
 	const points = meter(), h = fixture(); h.install(); h.emit({ type: "turn_start" });
 	h.call(); h.dispatch.cutoff(); h.message();
 	h.call(); h.message(); h.emit({ type: "compaction_start" }); h.emit({ type: "compaction_end", result: { usage } });
-	assert.equal(h.sent(), 2); assert.equal(h.of("worker_model_call").length, 1);
-	assert.deepEqual(points.filter((p) => p.name === "slate.model.cost").map((p) => p.value), [0.3]);
+	assert.equal(h.sent(), 2); assert.equal(h.of("worker_model_call").length, 2);
+	assert.deepEqual(h.of("worker_model_call").map((e) => e.attributes["slate.attempt.index"]), [0, 0]);
+	assert.deepEqual(points.filter((p) => p.name === "slate.model.cost").map((p) => p.value), [0.3, 0.3, 0.3]);
 	h.dispatch.finish("succeeded"); balanced(h.events);
+});
+
+const recoveryRoute: RecoveryCandidate = { kind: "ordinary", logicalModel: "fallback", provider: "backup", model: "next", effort: "off" };
+test("recovery keeps late turn, tool, request and compaction completions on their original attempt", async () => {
+	const points = meter(), h = fixture(); h.install();
+	h.emit({ type: "turn_start" }); h.call();
+	h.emit({ type: "tool_execution_start", toolCallId: "old", toolName: "read" });
+	const late = requestObservation(h.session)!;
+	late.wait(); const oldSpan = late.admit(model); late.returned(oldSpan, h.stream);
+	h.emit({ type: "compaction_start" });
+	h.dispatch.cutoff();
+	await executeRecovery(h.dispatch.recovery({ candidates: [recoveryRoute], retainedToolResults: [], validateSwitch: () => ({ ok: true }),
+		attempt: () => {
+			h.emit({ type: "turn_start" });
+			h.message({ input: 2, cost: { total: 0.125 } }); // The already admitted attempt-zero request.
+			h.emit({ type: "turn_end" });
+			h.emit({ type: "tool_execution_end", toolCallId: "old", isError: false });
+			h.emit({ type: "compaction_end", result: { usage: { output: 3, cost: { total: 0.25 } } } });
+			h.message({ cost: { total: 0.125 } });
+			h.contract.expect({ provider: "backup", model: "next", effort: "off" });
+			h.call({ ...model, provider: "backup", id: "next" }); h.message({ input: 4, cost: { total: 0.5 } });
+			h.emit({ type: "tool_execution_start", toolCallId: "new", toolName: "read" });
+			h.emit({ type: "tool_execution_end", toolCallId: "new", isError: false });
+			h.emit({ type: "turn_end" });
+			return { kind: "success", value: 7, actualEffort: "off" };
+		} }));
+	h.dispatch.outcome("succeeded", 1); h.dispatch.finish("succeeded"); balanced(h.events);
+	assert.deepEqual(h.of("worker_model_call", "usage").map((e) => [e.attributes["slate.attempt.index"], e.attributes["slate.request.index"]]), [[0, 0], [0, 1], [1, 0]]);
+	assert.deepEqual(h.of("worker_compaction", "usage").map((e) => e.attributes["slate.attempt.index"]), [0]);
+	assert.deepEqual(h.of("worker_tool", "end").map((e) => e.attributes["slate.attempt.index"]), [0, 1]);
+	assert.deepEqual(h.of("worker_turn", "end").map((e) => e.attributes["slate.attempt.index"]), [0, 1]);
+	assert.equal(h.events.find((e) => e.phase === "start" && e.id === h.events.find((e) => e.phase === "admission")!.id)!.attributes["slate.attempt.index"], 0);
+	assert.deepEqual(points.filter((p) => p.name === "slate.model.cost").map((p) => [p.value, p.labels["slate.logical_model"], p.labels["gen_ai.provider.name"], p.labels["gen_ai.request.model"]]),
+		[[0.125, "logical-a", "p", "m"], [0.25, "logical-a", "p", "m"], [0.125, "logical-a", "p", "m"], [0.5, "fallback", "backup", "next"]]);
+});
+
+test("summary requests admitted after recovery retain the open compaction and never take assistant billing", { timeout: 5000 }, async () => {
+	for (const startAfterCutoff of [false, true]) {
+		const h = fixture(); h.install();
+		if (!startAfterCutoff) h.emit({ type: "compaction_start" });
+		h.dispatch.cutoff();
+		if (startAfterCutoff) h.emit({ type: "compaction_start" });
+		await executeRecovery(h.dispatch.recovery({ candidates: [recoveryRoute], retainedToolResults: [], validateSwitch: () => ({ ok: true }),
+			attempt: () => {
+				h.contract.expect(recoveryRoute);
+				for (let i = 0; i < 2; i++) h.call({ ...model, provider: "backup", id: "next" });
+				h.stream.push({ type: "done", reason: "stop", message: { stopReason: "stop" } } as any); h.stream.end();
+				h.emit({ type: "compaction_end", result: { usage: { output: 3, cost: { total: 0.25 } } } });
+				h.emit({ type: "turn_start" });
+				h.call({ ...model, provider: "backup", id: "next" }); h.message({ input: 4, cost: { total: 0.5 } });
+				return { kind: "success", value: 7, actualEffort: "off" };
+			} }));
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		h.dispatch.finish("succeeded"); balanced(h.events);
+		const calls = h.of("worker_model_call"), compact = h.of("worker_compaction")[0]!;
+		assert.deepEqual(calls.map((e) => [e.attributes["slate.attempt.index"], e.attributes["slate.request.index"]]), [[0, 0], [0, 1], [1, 0]]);
+		assert.ok(calls.slice(0, 2).every((e) => e.parentId === compact.id));
+		assert.equal(h.of("worker_model_call", "usage").length, 1);
+		assert.equal(h.of("worker_model_call", "usage")[0]!.id, calls[2]!.id);
+		assert.equal(h.of("worker_model_call", "usage")[0]!.attributes["slate.logical_model"], "fallback");
+		assert.equal(h.of("worker_compaction", "usage")[0]!.attributes["slate.attempt.index"], 0);
+		assert.equal(h.of("worker_compaction", "usage")[0]!.attributes["slate.gen_ai.cost.usd"], 0.25);
+	}
+});
+
+test("multiple fallback candidates reset request indexes and compaction retries bill only the operation", async () => {
+	const h = fixture(); h.install(); h.dispatch.cutoff();
+	const candidates = [recoveryRoute, { ...recoveryRoute, logicalModel: "last", provider: "last", model: "last" }];
+	await executeRecovery(h.dispatch.recovery({ candidates, retainedToolResults: [], validateSwitch: () => ({ ok: true }),
+		attempt: async ({ candidate }) => {
+			h.contract.expect(candidate); h.emit({ type: "turn_start" });
+			h.call({ ...model, provider: candidate.provider, id: candidate.model }); h.message({ cost: { total: 0.125 } });
+			h.emit({ type: "compaction_start" });
+			for (let i = 0; i < 2; i++) h.call({ ...model, provider: candidate.provider, id: candidate.model });
+			h.stream.push({ type: "done", reason: "stop", message: { stopReason: "stop" } } as any); h.stream.end();
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			const end = { type: "compaction_end", result: { usage: { input: 3, cost: { total: 0.25 } } } };
+			h.emit(end); h.emit(end); h.emit({ type: "turn_end" });
+			return { kind: "retry-exhausted" };
+		} }));
+	h.dispatch.finish("failed"); balanced(h.events);
+	assert.deepEqual(h.of("worker_model_call").map((e) => e.attributes["slate.request.index"]), [0, 1, 2, 0, 1, 2]);
+	assert.deepEqual(h.of("worker_compaction", "usage").map((e) => e.attributes["slate.attempt.index"]), [1, 2]);
+	assert.equal(h.of("worker_model_call", "usage").length, 2);
+	assert.equal(h.of("worker_attempt", "end").length, 3);
+});
+
+test("included work during recovery settlement keeps the final attempt and request counter", async () => {
+	const h = fixture(); h.install(); h.dispatch.cutoff();
+	await executeRecovery(h.dispatch.recovery({ candidates: [recoveryRoute], retainedToolResults: [], validateSwitch: () => ({ ok: true }),
+		attempt: () => ({ kind: "success", value: 7, actualEffort: "off" }) }));
+	h.emit({ type: "turn_start" }); h.contract.expect(recoveryRoute);
+	const waiting = requestObservation(h.session)!; waiting.wait(); waiting.refused();
+	h.call({ ...model, provider: "backup", id: "next" }); h.message({ input: 4, cost: { total: 0.125 } });
+	h.emit({ type: "compaction_start" });
+	h.emit({ type: "compaction_end", result: { usage: { output: 2, cost: { total: 0.25 } } } });
+	h.dispatch.outcome("failed", 0.375); h.dispatch.finish("failed"); balanced(h.events);
+	assert.deepEqual(h.of("worker_model_call", "usage").map((e) => [e.attributes["slate.attempt.index"], e.attributes["slate.request.index"]]), [[1, 0]]);
+	assert.deepEqual(h.of("worker_compaction", "usage").map((e) => e.attributes["slate.attempt.index"]), [1]);
+	assert.equal(h.of("worker_attempt", "end").at(-1)!.attributes["slate.outcome"], "succeeded");
+	assert.deepEqual(h.events.filter((e) => e.phase === "admission").map((e) => e.attributes["slate.outcome"]), ["wait", "refused"]);
+});
+
+test("recovery observer failures report once and preserve returned values and thrown errors", async (t) => {
+	const output: string[] = []; t.mock.method(process.stderr, "write", ((s: string) => { output.push(s); return true; }) as any);
+	t.mock.method(WorkerTelemetry.prototype, "recover", () => { throw Error("private observer"); });
+	t.mock.method(WorkerTelemetry.prototype, "endRecovery", () => { throw Error("private observer"); });
+	const h = fixture(), result = { kind: "cancelled" as const }, error = Error("private provider");
+	const input = { candidates: [recoveryRoute], retainedToolResults: [], validateSwitch: () => ({ ok: true as const }), attempt: () => result };
+	assert.equal(await h.dispatch.recovery(input).attempt({ candidate: recoveryRoute, retainedToolResults: [] }), result);
+	await assert.rejects(async () => h.dispatch.recovery({ ...input, attempt: () => { throw error; } }).attempt({ candidate: recoveryRoute, retainedToolResults: [] }), (e: unknown) => e === error);
+	h.dispatch.finish("failed");
+	assert.equal(output.length, 1); assert.match(output[0]!, /telemetry observer failed/); assert.ok(!output.join("").includes("private"));
 });
 
 test("real Pi summary retry exposes only final-response collected usage", { timeout: 5000 }, async () => {

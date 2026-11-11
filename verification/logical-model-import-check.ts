@@ -40,6 +40,8 @@ export const REVIEWED_LOGICAL_MODEL_EDGES = Object.freeze([
 	"extension/logical-model-runtime.ts|import|extension/logical-model-adapters",
 	"extension/mode.ts|import|extension/logical-model-runtime",
 	"extension/state.ts|import|extension/logical-model-definitions",
+	"extension/telemetry/dispatch.ts|import|extension/logical-model-adapters",
+	"extension/telemetry/worker.ts|import|extension/logical-model-recovery",
 	"extension/threads.ts|import|extension/logical-model-adapters",
 	"extension/threads.ts|import|extension/logical-model-runtime",
 	"extension/threads.ts|import|extension/logical-model-recovery",
