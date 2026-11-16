@@ -2,6 +2,7 @@ import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-
 import { DispatchAccounting, Telemetry, type TelemetryAttributes, type TelemetrySpan } from "./core.ts";
 import type { RecoveryCandidate } from "../logical-model-recovery.ts";
 import { observeRequests, type RequestObservation } from "./request.ts";
+import { commandAttributes } from "./command.ts";
 
 type CollectedUsage = { input?: number; output?: number; cacheRead?: number; cacheWrite?: number; cost?: { total?: number } };
 function usageAttributes(usage: CollectedUsage | undefined): TelemetryAttributes {
@@ -38,7 +39,7 @@ export class WorkerTelemetry {
 		this.accounting = privateAccounting;
 		this.telemetry = telemetry;
 		this.attributes = Object.fromEntries(Object.entries({ ...parent?.attributes, ...attributes, "slate.attempt.index": 0 })
-			.filter(([key]) => !key.startsWith("slate.tool.")));
+			.filter(([key]) => !key.startsWith("slate.tool.") && !key.startsWith("slate.command.")));
 		telemetry.guard("observer", () => {
 			this.attempt = telemetry.start("worker_attempt", this.attributes, parent);
 			this.stopRequests = observeRequests(session, () => this.request());
@@ -149,6 +150,7 @@ export class WorkerTelemetry {
 			this.tools.set(event.toolCallId, this.telemetry.start("worker_tool", {
 				...this.attributes, "slate.tool.call_id": event.toolCallId,
 				"slate.tool.parent_call_id": event.parentToolCallId, "slate.tool.name": event.toolName,
+				...commandAttributes(event.toolName, event.args),
 			}, parent));
 		} else if (event.type === "tool_execution_end") {
 			const tool = this.tools.get(event.toolCallId);

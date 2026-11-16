@@ -589,3 +589,21 @@ test("worker sink failures report once per kind and TUI reporting waits for quit
 	assert.equal(output.filter((s) => s.includes("spans failed")).length, 1);
 	assert.equal(output.filter((s) => s.includes("metrics failed")).length, 1);
 });
+
+test("orchestrator bash spans carry command labels, and metrics omit program and text", async () => {
+	const h = host(), p = provider(); p.register();
+	await h.emit("session_start"); await h.emit("agent_start"); await h.emit("turn_start", { turnIndex: 0 });
+	await h.emit("tool_execution_start", { toolCallId: "sh", toolName: "bash", args: { command: "cd x && npm test secret-arg" } });
+	await h.emit("tool_execution_end", { toolCallId: "sh", isError: true });
+	await h.emit("turn_end"); await h.emit("agent_end");
+	const span = p.spans.find((s) => s.attributes["slate.tool.call_id"] === "sh")!;
+	assert.equal(span.attributes["slate.command.category"], "test");
+	assert.equal(span.attributes["slate.command.runner"], "local");
+	assert.equal(span.attributes["slate.command.program"], "npm");
+	assert.equal(span.attributes["slate.command.text"], undefined);
+	const duration = p.measurements.find((m) => m.name === "slate.duration" && m.labels["slate.kind"] === "tool")!;
+	assert.equal(duration.labels["slate.command.category"], "test");
+	assert.equal(duration.labels["slate.command.runner"], "local");
+	assert.equal("slate.command.program" in duration.labels, false);
+	assert.doesNotMatch(JSON.stringify(h.events), /secret-arg/);
+});

@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionContext, ExtensionEvent, SessionEntry } from "@earendil-works/pi-coding-agent";
 import { Telemetry, TELEMETRY_CHANNEL, flushFailures, type TelemetryAttributes, type TelemetrySpan } from "./core.ts";
 import { DispatchTelemetry } from "./dispatch.ts";
+import { commandAttributes } from "./command.ts";
 import { isChangeFolder } from "../artifact-names.ts";
 
 type ModelCall = { span?: TelemetrySpan; ended?: number };
@@ -121,7 +122,8 @@ export function registerTelemetry(pi: ExtensionAPI, logicalModel?: (provider: st
 		scan(ctx);
 		const parent = event.parentToolCallId ? tools.get(event.parentToolCallId) : turn ?? ensureRun();
 		tools.set(event.toolCallId, telemetry.start("tool", { ...session(), "slate.tool.name": event.toolName,
-			"slate.tool.call_id": event.toolCallId, "slate.tool.parent_call_id": event.parentToolCallId }, parent));
+			"slate.tool.call_id": event.toolCallId, "slate.tool.parent_call_id": event.parentToolCallId,
+			...commandAttributes(event.toolName, event.args) }, parent));
 		if (event.toolName === "thread") {
 			const id = event.toolCallId;
 			dispatches.set(id, new DispatchTelemetry(telemetry, tools.get(id), () => finishThreadTool(id)));

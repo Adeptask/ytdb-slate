@@ -30,6 +30,7 @@ export type TelemetryKind = "session" | "run" | "turn" | "model" | "tool" | "dis
 export type TelemetryAttributes = Partial<Record<
 	"slate.session.id" | "slate.session.instance_id" | "slate.change" | "slate.change.previous" | "slate.change.source" |
 	"slate.tool.call_id" | "slate.tool.parent_call_id" | "slate.tool.name" |
+	"slate.command.category" | "slate.command.runner" | "slate.command.program" | "slate.command.text" |
 	"slate.track" | "slate.thread.id" | "slate.episode.id" | "slate.episode.recorded" |
 	"slate.dispatch.requested_model" | "slate.dispatch.final_model" | "slate.dispatch.requested_effort" | "slate.dispatch.final_effort" |
 	"slate.dispatch.invalid_accounting" | "slate.kind" | "slate.outcome" | "slate.logical_model" | "slate.thread.type" |
@@ -53,6 +54,7 @@ export type TelemetrySpan = { id: string; kind: TelemetryKind; context: Context;
 const attributeKeys = new Set([
 	"slate.session.id", "slate.session.instance_id", "slate.change", "slate.change.previous", "slate.change.source",
 	"slate.tool.call_id", "slate.tool.parent_call_id", "slate.tool.name", "slate.kind",
+	"slate.command.category", "slate.command.runner", "slate.command.program", "slate.command.text",
 	"slate.track", "slate.thread.id", "slate.episode.id", "slate.episode.recorded",
 	"slate.dispatch.requested_model", "slate.dispatch.final_model", "slate.dispatch.requested_effort", "slate.dispatch.final_effort",
 	"slate.dispatch.invalid_accounting", "slate.dispatch.not_stored_cost.usd",
@@ -62,6 +64,7 @@ const attributeKeys = new Set([
 	"gen_ai.usage.cache_creation.input_tokens", "gen_ai.usage.reasoning.output_tokens", "slate.gen_ai.cost.usd",
 ]);
 const metricKeys = ["slate.kind", "slate.outcome", "slate.logical_model", "slate.thread.type",
+	"slate.command.category", "slate.command.runner",
 	"gen_ai.provider.name", "gen_ai.request.model", "gen_ai.response.model"] as const;
 
 const numericKeys = new Set(["slate.attempt.index", "slate.request.index", "slate.turn.index",

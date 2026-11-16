@@ -175,3 +175,25 @@ test("worker observer failures are isolated and report once per kind across disp
 	assert.doesNotMatch(output.join(""), /private/);
 	balanced(h.events);
 });
+
+test("worker bash spans carry command labels without inheriting them into later spans", () => {
+	const h = fixture();
+	h.emit({ type: "turn_start" });
+	h.emit({ type: "tool_execution_start", toolCallId: "outer", toolName: "codemode", args: { code: "private" } });
+	h.emit({ type: "tool_execution_start", toolCallId: "sh", parentToolCallId: "outer", toolName: "bash", args: { command: "boat-run run test private" } });
+	h.emit({ type: "tool_execution_end", toolCallId: "sh", isError: false });
+	h.emit({ type: "tool_execution_end", toolCallId: "outer", isError: false });
+	h.emit({ type: "turn_end" });
+	h.emit({ type: "turn_start" });
+	h.emit({ type: "turn_end" });
+	h.dispatch.finish("succeeded");
+	const tool = (id: string) => h.of("worker_tool").find((e) => e.attributes["slate.tool.call_id"] === id);
+	const codemode = tool("outer"), bash = tool("sh");
+	assert.equal(codemode!.attributes["slate.command.category"], undefined);
+	assert.equal(bash!.attributes["slate.command.category"], "test");
+	assert.equal(bash!.attributes["slate.command.runner"], "boat");
+	assert.equal(bash!.attributes["slate.command.program"], "boat-run");
+	assert.ok(h.of("worker_turn").every((e) => e.attributes["slate.command.category"] === undefined));
+	assert.doesNotMatch(JSON.stringify(h.events), /private/);
+	balanced(h.events);
+});

@@ -114,8 +114,16 @@ Slate attempts notifications after a main-session run settles or an extension di
 Slate telemetry records metadata through the OpenTelemetry API and `pi.events`
 (channel `slate.telemetry.v1`). A separate extension supplies the exporter.
 Set `SLATE_TELEMETRY=0` before starting pi to turn telemetry off.
-Telemetry excludes prompts, responses, tool data, and raw errors. Each failure kind
-is reported once on stderr. TUI sessions defer these reports until quit.
+Telemetry excludes prompts, responses, raw tool data, and raw errors.
+For each bash tool call, Slate records three derived labels: a fixed command
+category such as `test` or `git`, the program name, and the runner.
+The runner is `boat` for a command that runs on a boat.dev remote machine.
+Otherwise the runner is `local`.
+Set `SLATE_TELEMETRY_COMMAND_TEXT=1` to also record the first 300 characters
+of each bash command on its span. Slate masks common credential forms in
+this text, but the text can still contain secrets.
+Each failure kind is reported once on stderr. TUI sessions defer these reports
+until quit.
 
 ## Safety and trust
 
