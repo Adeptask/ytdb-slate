@@ -89,7 +89,7 @@ function fixture(config: Record<string, unknown>, usage?: { percent: number; tok
 }
 
 test("the pinned SDK resolves the agent directory at call time, so the fixture isolation holds", async () => {
-  // slate calls getAgentDir() inside reserveTokens, and pinned pi 1.4.0
+  // slate calls getAgentDir() inside reserveTokens, and pinned pi 1.5.2
   // reads process.env[PI_CODING_AGENT_DIR] inside that function. The value is
   // therefore never captured at import time, and the override above cannot
   // depend on when this module was loaded.
@@ -127,6 +127,21 @@ test("the token-budget pause reports the same save contract in its headline", as
       f.sent[0]!.message.content as string,
       "[slate] Context is at 200,000 tokens — over the 100-token budget. Slate auto-paused: user prompts are refused, and state-save workers remain available.",
     );
+  });
+});
+
+test("the built-in budget pauses a large-window OpenAI session at 400,000 tokens", { timeout: 5_000 }, async () => {
+  await isolated(async () => {
+    const usage = { percent: 40, tokens: 399_999, contextWindow: 1_000_000 };
+    const f = fixture({}, usage, { provider: "openai", id: "test-model" });
+    const turnEnd = f.handlers.get("turn_end")!;
+    await turnEnd({}, f.ctx);
+    assert.equal(f.store.paused, false);
+    assert.equal(f.sent.length, 0);
+    usage.tokens++;
+    await turnEnd({}, f.ctx);
+    assert.equal(f.store.paused, true);
+    assert.match(f.sent.at(-1)!.message.content, /the 400,000-token budget/);
   });
 });
 

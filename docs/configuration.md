@@ -67,7 +67,7 @@ The project must be trusted before Slate reads this file. Start a new session af
 | `requestThrottle.baseWaitMs` | number | `1000` | Base delay before a blocked request rechecks capacity. The value must be a whole number from 1 through 60000. A positive minimum prevents a repeated zero-delay loop. |
 | `requestThrottle.jitterMs` | number | `1000` | Uniform random extra delay from zero through this inclusive bound before a blocked request rechecks. The value must be a whole number from 0 through 60000. Admission is approximately fair. It is not first-in-first-out and does not promise a bounded wait. |
 | `maxConcurrent` | number | `8` | Maximum concurrent worker actions per manager. Accepts positive safe integers only. Invalid input warns and selects 8. Excess actions wait for a slot. Every action has its own thread. See the worker-limit guidance below and `docs/design-principles.md` §5. |
-| `contextBudget` | number \| object | `256000` (Anthropic models: `400000`) | Absolute orchestrator context budget (tokens) at which Slate auto-pauses and prepares a fresh-session handoff — semantics, defaults, per-model overrides, and rationale in [`docs/context-budget.md`](context-budget.md). |
+| `contextBudget` | number \| object | `400000` | Sets the orchestrator's pause threshold in tokens. Slate lowers the threshold when the model's context window requires it. See [Orchestrator context budget](context-budget.md) for the handoff and per-model overrides. |
 | `orchestratorPromptDocs` | string[] | `[]` | Markdown files whose paths follow the source rules above and whose **contents** are appended to the orchestrator system prompt. |
 | `workerPromptDocs` | string[] | `[]` | Markdown files whose **contents** are appended to every worker-thread system prompt. |
 | `workflow.draftPRs` | boolean | `false` | Enable one draft pull request for the whole change on one branch. See [pr-publishing.md](pr-publishing.md) § One draft pull request and § Creation. |
@@ -84,8 +84,8 @@ The project must be trusted before Slate reads this file. Start a new session af
 | `writing.findings` | boolean | `true` | Include the latest model-visible writing findings in the hidden reminder. An invalid value warns and falls back to `true`. Measurement continues when this value is `false`. The status line follows `writing.showStatus`. |
 | `doctrineExtraPath` | string | — | Markdown whose **content** is appended to the orchestrator doctrine (project-specific workflow additions). |
 | `reviewPerspectivesPath` | string | — | Review charters, each declaring its own finding-ID prefix. The doctrine references this **path**; the orchestrator reads the file alongside the shipped review rules. |
-| `router.models` | object | shipped seven-model pool | Ordinary membership and definitions. `include` replaces the starting membership, including with an empty list. `add` accepts complete new definitions. `replace` changes selected fields. `exclude` applies last. Within each model definition, lists and provider maps replace shipped fields. The home and project configuration files merge first. |
-| `router.compressor.models` | array of `{ model, effort }` | `[{"model":"claude-sonnet-5.5","effort":"medium"}]` | Independent ordered compressor list. An explicit empty list blocks work. |
+| `router.models` | object | shipped four-model default pool | Ordinary membership and definitions. `include` replaces the starting membership, including with an empty list. `add` accepts complete new definitions. `replace` changes selected fields. `exclude` applies last. Within each model definition, lists and provider maps replace shipped fields. The home and project configuration files merge first. |
+| `router.compressor.models` | array of `{ model, effort }` | `[{"model":"sol-6.2","effort":"low"}]` | Independent ordered compressor list. An explicit empty list blocks work. |
 
 Notification settings define permissions and text policy. Slate validates these settings at session start. Slate registers terminal, bell, native and push delivery channels. A channel is one delivery route. Slate registers no notification tool. See [Notifications](#notifications) for automatic delivery and setup.
 
@@ -548,6 +548,34 @@ Repeat from an inactive tmux window with the documented passthrough permission.
 
 Record the host, client, versions, settings and observed result.
 Do not report unavailable checks as successful delivery.
+
+## Default routing and compression
+
+The default ordinary pool is `luna-6`, `sol-6.2`, `astra-6.2`, and `fable-5-2`, in that order.
+A dispatch naming `gemini-3.8-flash` or `claude-sonnet-5.5` is refused unless `router.models.include` names it.
+A main session on a Sonnet or Gemini route has no logical model by default.
+The same applies to older Sol, Astra, and Opus routes.
+Main recovery stops and asks for a model choice. Handoff adoption pauses.
+
+The default compressor is `sol-6.2` at `low`.
+Ordinary Sol 6.2 keeps effort `high`.
+Compression sends completed worker content to provider `openai` by default.
+Without the `openai/gpt-6.2-sol` route or OpenAI credentials, every episode
+keeps the bounded uncompressed result with the existing compression-failure notice.
+Compression requests on OpenAI GPT-6-or-later routes use a context window of at least 1,050,000 tokens.
+A larger registered window is kept. Only the compression request model changes.
+Worker sessions, the main session, registry entries, prices, cost tiers and route identity stay unchanged.
+
+Above 272,000 input tokens, the provider bills long-context rates for the full request.
+The provider accepts at most 922,000 input tokens.
+It rejects larger input, which produces the existing compression-failure notice.
+
+The 300,000-character transcript limit and 4,096-token output limit still apply.
+The task and diagnostics add input beyond the transcript limit.
+Compression requests stay outside worker pacing.
+
+`claude-sonnet-5.5` is unused by default.
+It can be named in `router.models.include` or `router.compressor.models`.
 
 ## Extended example
 
